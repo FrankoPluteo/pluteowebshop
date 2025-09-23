@@ -1,0 +1,43 @@
+ @import url('./variables.css');
+
+
+.navbar {
+  position: absolute;
+  top: 37.5px;
+  left: 50%;
+  transform: translate(-50%, -50%); /* X then Y */
+  display: flex;
+  justify-content: center;
+  gap: 150px;
+  padding: 10px;
+  font-family: Montserrat;
+  /* Added z-index to ensure the navbar is on top of other elements */
+  z-index: 100;
+}
+
+.navbar-link {
+  text-decoration: none;
+  color: var(--color-dark);
+  font-weight: 500;
+  transition: color 0.3s ease, transform 0.3s ease;
+}
+
+.navbar-link:hover {
+  color: var(--color-light);
+  transform: translateY(-2px);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .navbar {
+    top: 20px;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    gap: 20px;
+    width: auto;
+  }
+  
+  .navbar-link {
+    font-size: 14px;
+  }
+}

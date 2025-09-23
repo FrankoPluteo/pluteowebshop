@@ -1,0 +1,206 @@
+/*
+ * Home.css
+ * This file contains the styling for the Home component.
+ * Refactored to use CSS variables for colors, with theme support.
+ */
+
+ @import url('./variables.css');
+
+
+
+body {
+    margin: 0;
+    padding: 0;
+    color: var(--color-text);
+    background-color: var(--color-white);
+}
+
+/* Base styles for desktop view */
+.navbar {
+    position: absolute;
+    top: 37.5px;
+    left: 50%;
+    transform: translate(-50%, -50%); /* X then Y */
+    display: flex;
+    justify-content: center;
+    gap: 150px;
+    padding: 10px;
+    font-family: Montserrat;
+}
+
+.home-background {
+    position: relative;
+    margin: 75px;
+    height: 500px;
+    background: linear-gradient(to right, var(--color-dark), var(--color-light));
+}
+
+.logo-shop-nishane {
+    position: absolute;
+    right: 0;
+    display: flex;
+    justify-content: end;
+    align-items: center;
+    width: 90%;
+    height: 100%;
+}
+
+.logo-shop {
+    display: flex;
+    align-items: center;
+    justify-content: baseline;
+    gap: 150px;
+    position: absolute;
+    left: 0;
+}
+
+.pluteologohome {
+    width: 400px;
+    position: relative;
+    left: 0;
+}
+
+.go-to-shop {
+    position: relative;
+    width: 120px;
+    text-decoration: none;
+    font-family: Montserrat;
+    background-color: var(--color-white);
+    color: var(--color-dark);
+    padding: 10px;
+    font-size: 30px;
+    text-align: center;
+    transition: all 0.3s ease;
+    border-top-right-radius: 8px;
+    border-bottom-left-radius: 8px;
+    z-index: 1;
+}
+
+.go-to-shop:hover {
+    background-color: var(--color-dark);
+    color: var(--color-white);
+    transform: scale(1.1);
+}
+
+.nishanejoemalone {
+    width: 40%;
+    position: relative;
+}
+
+.home-2 {
+    position: relative;
+    margin: 75px; /* top, right, bottom, left */
+    height: 500px;
+    display: flex;
+    gap: 70px;
+}
+
+.home-2-1 {
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: calc(50% - 17.5px);
+    height: 100%;
+    background: linear-gradient(to left, var(--color-dark), var(--color-light));
+}
+
+.xerjoffhome {
+    position: absolute;
+    width: 100%;
+    object-fit: cover;
+    top: -10%;
+    opacity: 50%;
+}
+
+.shop-niche {
+    position: absolute;
+    width: 280px;
+    border: none;
+    text-decoration: none;
+    font-family: Montserrat;
+    background-color: var(--color-white);
+    color: var(--color-dark);
+    padding: 10px;
+    font-size: 30px;
+    text-align: center;
+    transition: all 0.3s ease;
+    border-top-right-radius: 8px;
+    border-bottom-left-radius: 8px;
+}
+
+.shop-niche:hover {
+    background-color: var(--color-dark);
+    color: var(--color-white);
+    transform: scale(1.1);
+    cursor: pointer;
+}
+
+.home-2-2 {
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: calc(50% - 17.5px);
+    height: 100%;
+    background: linear-gradient(to right, var(--color-dark), var(--color-light));
+}
+
+.home-3 {
+    position: relative;
+    margin: 75px; /* top, right, bottom, left */
+    height: 500px;
+    background: linear-gradient(to left, var(--color-dark), var(--color-light));
+}
+
+@media (max-width: 768px) {
+    .home-background {
+        margin: 30px;
+        height: 200px;
+    }
+
+    .logo-shop-nishane {
+        flex-direction: column;
+        justify-content: baseline;
+        width: 100%;
+    }
+
+    .logo-shop {
+        flex-direction: column;
+        top: 10%;
+        gap: 50px;
+        width: 100%;
+    }
+
+    .pluteologohome {
+        width: 80%;
+    }
+
+    .nishanejoemalone {
+        display: none;
+    }
+
+    .home-2, .home-3 {
+        margin: 30px;
+        gap: 35px;
+        height: auto;
+    }
+
+    .home-2 {
+        flex-direction: column;
+    }
+
+    .home-2-1,
+    .home-2-2 {
+        width: 100%;
+        height: 200px;
+    }
+
+    .shop-niche {
+        width: 150px;
+        font-size: 15px;
+        bottom: 10px;
+    }
+}

@@ -1,0 +1,39 @@
+env file je prilozio ovo prvo: 
+DATABASE_URL="prisma+postgres://localhost:51213/
+
+Za sljedeci put:
+
+uvedi pracenje statistike stranice - CHATGPT razgovor na frankopavlic@gmail.com - fix shipping deatils handelling (Potreban je buduci domain)
+
+popravi apple pay success page (popravit ce se na go live)
+
+popravi description i attributes od parfema (Matej treba)
+
+GO LIVE (testiraj sve na kompu i mobitelu)
+
+PROBLEMI:
+
+random crveni red u konzoli, nesto s DOM
+
+mongo update ip adresu svaki put
+
+Pregledaj one zute "erorre" nakon sto te preusmjeri na stripe checkout
+
+Rijesi user authentication
+
+KORISTIS:
+
+email js za contact 
+
+prisma za database 
+
+vite + react za frontend 
+
+stripe za placanje
+
+mongo za pamcenje ordera 
+
+nodemialer za email confirmation 
+
+dijelim database pgadmin4 s tailscaleom
+sifra za djeljenje databasea : VontaGrupa123!

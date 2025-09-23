@@ -1,0 +1,8 @@
+:root {
+    /* Theme colors */
+    --color-dark: #6C534E;
+    --color-light: #A67F8E;
+    --color-white: #ffffff;
+    --color-text: #333333;
+    --color-success: green;
+}
