@@ -3,6 +3,8 @@ DATABASE_URL="prisma+postgres://localhost:51213/
 
 Za sljedeci put:
 
+procitaj chat na chatgptu o postupku za deployanje
+
 uvedi pracenje statistike stranice - CHATGPT razgovor na frankopavlic@gmail.com - fix shipping deatils handelling (Potreban je buduci domain)
 
 popravi apple pay success page (popravit ce se na go live)
@@ -35,5 +37,8 @@ mongo za pamcenje ordera
 
 nodemialer za email confirmation 
 
+cloudinary za storanje slika
+
 dijelim database pgadmin4 s tailscaleom
 sifra za djeljenje databasea : VontaGrupa123!
+

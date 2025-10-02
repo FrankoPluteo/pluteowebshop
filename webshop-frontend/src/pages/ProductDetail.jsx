@@ -24,9 +24,7 @@ export default function ProductDetail() {
       try {
         const res = await fetch(`${API_BASE_URL}/products/${productId}`);
         if (!res.ok) {
-          if (res.status === 404) {
-            throw new Error("Product not found.");
-          }
+          if (res.status === 404) throw new Error("Product not found.");
           throw new Error(`HTTP error! status: ${res.status}`);
         }
         const data = await res.json();
@@ -39,50 +37,24 @@ export default function ProductDetail() {
       }
     };
 
-    if (productId) {
-      fetchProduct();
-    } else {
-      setError("No product ID provided.");
-      setLoading(false);
-    }
+    if (productId) fetchProduct();
+    else { setError("No product ID provided."); setLoading(false); }
   }, [productId, API_BASE_URL]);
 
   const handleAddToCart = () => {
-    // Add validation to ensure product exists and has an id
-    if (!product || !product.id) {
-      console.error("Product is invalid or missing id:", product);
-      return;
-    }
-
+    if (!product || !product.id) return;
     addToCart(product);
-    
-    // Trigger both button and cart animations
     setAdded(true);
     setCartAnimating(true);
-    
-    setTimeout(() => {
-      setAdded(false);
-      setCartAnimating(false);
-    }, 600); // Match the animation duration
+    setTimeout(() => { setAdded(false); setCartAnimating(false); }, 600);
   };
 
   if (loading) return <div className="product-detail-container"><p>Loading product details...</p></div>;
-  if (error) return (
-    <div className="product-detail-container">
-      <p className="error-message">{error}</p>
-      <button onClick={() => navigate(-1)} className="back-to-products-btn">Back to Products</button>
-    </div>
-  );
-  if (!product) return (
-    <div className="product-detail-container">
-      <p>Product not found.</p>
-      <button onClick={() => navigate(-1)} className="back-to-products-btn">Back to Products</button>
-    </div>
-  );
+  if (error) return <div className="product-detail-container"><p className="error-message">{error}</p><button onClick={() => navigate(-1)} className="back-to-products-btn">Back to Products</button></div>;
+  if (!product) return <div className="product-detail-container"><p>Product not found.</p><button onClick={() => navigate(-1)} className="back-to-products-btn">Back to Products</button></div>;
 
   return (
     <div className="product-detail-container">
-      {/* Fixed "See Cart" button with item count */}
       <div className={`fixed-cart-container ${cartAnimating ? 'shake' : ''}`}>
         <Link className="see-cart-link" to="/cart">
           <svg className="cart-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -99,9 +71,10 @@ export default function ProductDetail() {
         <div className="product-detail-image-wrapper">
           <img
             className="product-detail-image"
-            src={`${API_BASE_URL}${product.image}`}
+            src={product.image || '/placeholder.png'}
             alt={product.name}
           />
+
         </div>
         <div className="product-detail-info">
           <h2 className="product-detail-name">{product.name}</h2>
@@ -121,13 +94,7 @@ export default function ProductDetail() {
             </div>
           )}
 
-          {/* ✅ Button with animation class */}
-          <button
-            className={`add-to-cart-detail-btn ${added ? "added" : ""}`}
-            onClick={handleAddToCart}
-          >
-            Add to Cart
-          </button>
+          <button className={`add-to-cart-detail-btn ${added ? "added" : ""}`} onClick={handleAddToCart}>Add to Cart</button>
         </div>
       </div>
     </div>
