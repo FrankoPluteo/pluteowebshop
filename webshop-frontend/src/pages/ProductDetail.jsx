@@ -17,7 +17,6 @@ export default function ProductDetail() {
 
   useEffect(() => {
     window.scrollTo(0, 0);
-
     const fetchProduct = async () => {
       setLoading(true);
       setError(null);
@@ -38,7 +37,10 @@ export default function ProductDetail() {
     };
 
     if (productId) fetchProduct();
-    else { setError("No product ID provided."); setLoading(false); }
+    else {
+      setError("No product ID provided.");
+      setLoading(false);
+    }
   }, [productId, API_BASE_URL]);
 
   const handleAddToCart = () => {
@@ -49,9 +51,14 @@ export default function ProductDetail() {
     setTimeout(() => { setAdded(false); setCartAnimating(false); }, 600);
   };
 
+  const handleBackToProducts = () => {
+    // Navigate to products without any state - this will trigger restoration from sessionStorage
+    navigate('/products');
+  };
+
   if (loading) return <div className="product-detail-container"><p>Loading product details...</p></div>;
-  if (error) return <div className="product-detail-container"><p className="error-message">{error}</p><button onClick={() => navigate(-1)} className="back-to-products-btn">Back to Products</button></div>;
-  if (!product) return <div className="product-detail-container"><p>Product not found.</p><button onClick={() => navigate(-1)} className="back-to-products-btn">Back to Products</button></div>;
+  if (error) return <div className="product-detail-container"><p className="error-message">{error}</p><button onClick={handleBackToProducts} className="back-to-products-btn">Back to Products</button></div>;
+  if (!product) return <div className="product-detail-container"><p>Product not found.</p><button onClick={handleBackToProducts} className="back-to-products-btn">Back to Products</button></div>;
 
   return (
     <div className="product-detail-container">
@@ -66,7 +73,8 @@ export default function ProductDetail() {
         </Link>
       </div>
 
-      <button onClick={() => navigate(-1)} className="back-to-products-btn">Back to Products</button>
+      <button onClick={handleBackToProducts} className="back-to-products-btn">Back to Products</button>
+
       <div className="product-detail-card">
         <div className="product-detail-image-wrapper">
           <img
@@ -74,27 +82,21 @@ export default function ProductDetail() {
             src={product.image || '/placeholder.png'}
             alt={product.name}
           />
-
         </div>
+
         <div className="product-detail-info">
           <h2 className="product-detail-name">{product.name}</h2>
-          <p className="product-detail-brand">Brand: {product.brand}</p>
+          <p className="product-detail-brand">{product.brand}</p>
           <p className="product-detail-price">{product.price.toFixed(2)}€</p>
-          <p className="product-detail-description">{product.description}</p>
-          {product.gender && <p className="product-detail-gender">Gender: {product.gender}</p>}
-          {product.size && <p className="product-detail-size">Size: {product.size}</p>}
-          {product.attributes && (
-            <div className="product-detail-attributes">
-              <h4>Attributes:</h4>
-              <ul>
-                {Object.entries(product.attributes).map(([key, value]) => (
-                  <li key={key}><strong>{key}:</strong> {value}</li>
-                ))}
-              </ul>
-            </div>
-          )}
+          <p className="product-detail-description">{product.description || "No description available."}</p>
+          <p className="product-detail-gender">Gender: {product.gender || "Unspecified"}</p>
 
-          <button className={`add-to-cart-detail-btn ${added ? "added" : ""}`} onClick={handleAddToCart}>Add to Cart</button>
+          <button
+            className={`add-to-cart-btn ${added ? 'added' : ''}`}
+            onClick={handleAddToCart}
+          >
+            {added ? 'Added!' : 'Add to Cart'}
+          </button>
         </div>
       </div>
     </div>

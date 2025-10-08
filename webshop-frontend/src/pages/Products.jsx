@@ -1,11 +1,12 @@
-import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import '../styles/Products.css';
 import { useCart } from "../context/CartContext";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import pluteologo from "../images/pluteologo.svg";
 import Navbar from "../components/Navbar";
 
 export default function Products() {
+  const location = useLocation();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const { cart, addToCart } = useCart();
@@ -37,6 +38,25 @@ export default function Products() {
 
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
+  // ✅ Check for fromHome FIRST, before restoring from sessionStorage
+  useEffect(() => {
+    if (location.state?.fromHome) {
+      sessionStorage.clear();
+      window.scrollTo(0, 0);
+    }
+    
+    // Handle filter application from Home buttons (Shop Niche/Designer)
+    if (location.state?.applyFilters) {
+      window.scrollTo(0, 0);
+    }
+  }, [location.state]);
+
+  // ✅ Reset to first page whenever search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
+
+  // ✅ Fetch filter metadata
   useEffect(() => {
     const fetchMetadata = async () => {
       try {
@@ -63,36 +83,61 @@ export default function Products() {
     fetchMetadata();
   }, [API_BASE_URL]);
 
+  // ✅ Restore filters, page, and scroll position from sessionStorage (only if NOT fromHome)
   useEffect(() => {
-    const filterType = sessionStorage.getItem('filterType');
-    const brandsFromHome = sessionStorage.getItem('selectedBrands');
+    // Skip restoration if coming from home (but not from filter buttons)
+    if (location.state?.fromHome) return;
 
-    if (filterType && brandsFromHome) {
-      const brands = JSON.parse(brandsFromHome);
-      setSelectedBrands(brands);
-      setTempSelectedBrands(brands);
-      setCurrentPage(1);
-      sessionStorage.removeItem('filterType');
-      sessionStorage.removeItem('selectedBrands');
+    const savedPage = sessionStorage.getItem('currentPage');
+    const savedScrollY = sessionStorage.getItem('scrollY');
+    const savedSearch = sessionStorage.getItem('search');
+    const savedBrands = sessionStorage.getItem('selectedBrands');
+    const savedMaxPrice = sessionStorage.getItem('maxPrice');
+    const savedGender = sessionStorage.getItem('gender');
+
+    if (savedPage) setCurrentPage(Number(savedPage));
+    if (savedSearch) setSearch(savedSearch);
+    if (savedBrands) {
+      const parsedBrands = JSON.parse(savedBrands);
+      setSelectedBrands(parsedBrands);
+      setTempSelectedBrands(parsedBrands);
     }
-  }, []);
+    if (savedMaxPrice) {
+      setMaxPrice(Number(savedMaxPrice));
+      setTempMaxPrice(Number(savedMaxPrice));
+    }
+    if (savedGender) {
+      setGender(savedGender);
+      setTempGender(savedGender);
+    }
+
+    // Only restore scroll if NOT applying filters from home buttons
+    if (!location.state?.applyFilters) {
+      setTimeout(() => {
+        if (savedScrollY) window.scrollTo(0, Number(savedScrollY));
+      }, 100);
+    }
+  }, [location.state]);
 
   const fetchPaginatedProducts = useCallback(async () => {
     setLoading(true);
     let url = `${API_BASE_URL}/products?page=${currentPage}&limit=${productsPerPage}`;
-    if (search) url += `&search=${search}`;
-    if (selectedBrands.length > 0) url += `&brands=${selectedBrands.join(',')}`;
+    if (search) url += `&search=${encodeURIComponent(search)}`;
+    if (selectedBrands.length > 0) url += `&brands=${encodeURIComponent(selectedBrands.join(','))}`;
     if (maxPrice > 0 && maxPrice < overallMaxProductPrice) url += `&maxPrice=${maxPrice}`;
-    if (gender) url += `&gender=${gender}`;
+    if (gender) url += `&gender=${encodeURIComponent(gender)}`;
+
+    console.log('Fetching URL:', url);
+    console.log('Selected Brands:', selectedBrands);
 
     try {
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       const data = await res.json();
-      const cleanedProducts = data.products.map(p => ({
-        ...p,
-        price: parseFloat(p.price) || 0
-      })).filter(p => p.price >= 0);
+      console.log('Total products returned:', data.totalProducts);
+      const cleanedProducts = data.products
+        .map(p => ({ ...p, price: parseFloat(p.price) || 0 }))
+        .filter(p => p.price >= 0);
 
       setProducts(cleanedProducts);
       setTotalProductsCount(data.totalProducts);
@@ -111,6 +156,7 @@ export default function Products() {
     fetchPaginatedProducts();
   }, [fetchPaginatedProducts]);
 
+  // ✅ Save state before navigating to product detail
   const saveStateBeforeNavigate = () => {
     sessionStorage.setItem('currentPage', currentPage);
     sessionStorage.setItem('scrollY', window.scrollY);
@@ -213,8 +259,11 @@ export default function Products() {
         <input type="text" placeholder="Search by name or brand..." value={search} onChange={e => setSearch(e.target.value)} className="filter-search" />
       </div>
 
+      {/* Filters */}
       <div className="filters-wrapper">
-        <button className="filters-toggle" onClick={() => setShowFilters(!showFilters)}>{showFilters ? "Hide Filters" : "Show Filters"}</button>
+        <button className="filters-toggle" onClick={() => setShowFilters(!showFilters)}>
+          {showFilters ? "Hide Filters" : "Show Filters"}
+        </button>
 
         <div className={`filters ${showFilters ? "show" : "hide"}`}>
           <div className="brand-checkboxes">
@@ -233,7 +282,7 @@ export default function Products() {
 
           <select value={tempGender} onChange={e => setTempGender(e.target.value)} className="gender-select">
             <option value="">All Genders</option>
-            {allAvailableGenders.length > 0 && allAvailableGenders.map((g, idx) => <option key={idx} value={g.toLowerCase()}>{g}</option>)}
+            {allAvailableGenders.map((g, idx) => <option key={idx} value={g.toLowerCase()}>{g}</option>)}
           </select>
 
           <div className="filter-buttons">
@@ -243,6 +292,7 @@ export default function Products() {
         </div>
       </div>
 
+      {/* Products */}
       {loading ? <p>Loading products...</p> : (
         <>
           <div className="product-grid">
@@ -255,7 +305,6 @@ export default function Products() {
                       src={product.image || '/placeholder.png'}
                       alt={product.name}
                     />
-
                   </div>
                   <div className="product-bottom">
                     <div className="product-info">
@@ -264,7 +313,12 @@ export default function Products() {
                     </div>
                     <div className="price-add-to-cart">
                       <p className="product-price">{(typeof product.price === 'number' ? product.price : 0).toFixed(2)}€</p>
-                      <button className={`add-to-cart-btn ${animatingProduct === product.id ? 'added' : ''}`} onClick={(e) => handleAddToCart(e, product)}>Add to Cart</button>
+                      <button
+                        className={`add-to-cart-btn ${animatingProduct === product.id ? 'added' : ''}`}
+                        onClick={(e) => handleAddToCart(e, product)}
+                      >
+                        Add to Cart
+                      </button>
                     </div>
                   </div>
                 </div>

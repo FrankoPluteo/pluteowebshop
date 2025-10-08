@@ -3,6 +3,14 @@ DATABASE_URL="prisma+postgres://localhost:51213/
 
 Za sljedeci put:
 
+popravi sve funkcije searchanja i funkcionalnost stranice
+popravi sve slike parfema
+Matej provjeri jesu slike tocne
+
+poljepsaj home page, pogotovo onaj dio di je logo i shop (kupi neki logo)
+
+user authentication?
+
 procitaj chat na chatgptu o postupku za deployanje
 
 uvedi pracenje statistike stranice - CHATGPT razgovor na frankopavlic@gmail.com - fix shipping deatils handelling (Potreban je buduci domain)
@@ -20,8 +28,6 @@ random crveni red u konzoli, nesto s DOM
 mongo update ip adresu svaki put
 
 Pregledaj one zute "erorre" nakon sto te preusmjeri na stripe checkout
-
-Rijesi user authentication
 
 KORISTIS:
 

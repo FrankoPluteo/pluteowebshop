@@ -22,7 +22,7 @@ function Home() {
 
   const designerBrands = [
     "Versace",
-    "Dolce & Gabbana",
+    "Dolce&Gabbana",
     "Dior",
     "Chanel",
     "Givenchy",
@@ -35,23 +35,30 @@ function Home() {
     "Armani",
     "Prada",
     "Paco Rabanne",
-    "JPG",
+    "Jean Paul Gaultier",
     "Hugo Boss"
-    // Add more designer brands as needed
   ];
 
   const handleNicheClick = () => {
+    // Clear sessionStorage first
+    sessionStorage.clear();
+    
     // Store filter data in sessionStorage to be picked up by Products component
-    sessionStorage.setItem('filterType', 'niche');
     sessionStorage.setItem('selectedBrands', JSON.stringify(nicheBrands));
-    navigate('/products');
+    sessionStorage.setItem('currentPage', '1');
+    
+    navigate('/products', { state: { applyFilters: true } });
   };
 
   const handleDesignerClick = () => {
+    // Clear sessionStorage first
+    sessionStorage.clear();
+    
     // Store filter data in sessionStorage to be picked up by Products component
-    sessionStorage.setItem('filterType', 'designer');
     sessionStorage.setItem('selectedBrands', JSON.stringify(designerBrands));
-    navigate('/products');
+    sessionStorage.setItem('currentPage', '1');
+    
+    navigate('/products', { state: { applyFilters: true } });
   };
 
   return (
@@ -62,7 +69,7 @@ function Home() {
         <div className="logo-shop-nishane">
           <div className="logo-shop">
             <img className="pluteologohome" src={pluteologo} alt="Pluteo Logo" />
-            <Link to="/products" className="go-to-shop">SHOP</Link>
+            <Link to="/products" className="go-to-shop" state={{ fromHome: true }}>SHOP</Link>
           </div>
           <img className="nishanejoemalone" src={nishanejoemalone} alt="Nishane and Jo Malone perfumes" />
         </div>

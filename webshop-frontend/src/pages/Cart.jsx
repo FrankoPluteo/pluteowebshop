@@ -70,7 +70,11 @@ export default function Cart() {
         {cart.map((item) => (
           <div key={item.id} className="cart-item">
             <img
-              src={`${API_BASE_URL}${item.image}`}
+              src={
+                item.image?.startsWith("http")
+                  ? item.image // ✅ already a Cloudinary or external URL
+                  : `${API_BASE_URL}${item.image}` // fallback for local/dev images
+              }
               alt={item.name}
               className="cart-item-image"
             />

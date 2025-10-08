@@ -6,7 +6,7 @@ export default function Navbar() {
   return (
     <div className="navbar">
       <Link to="/" className="navbar-link">HOME</Link>
-      <Link to="/products" id="shop" className="navbar-link">SHOP</Link>
+      <Link to="/products" className="navbar-link" state={{ fromHome: true }}>SHOP</Link>
       <Link to="/aboutus" className="navbar-link">ABOUT</Link>
       <Link to="/contact" className="navbar-link">CONTACT</Link>
     </div>
