@@ -153,6 +153,7 @@ if ((!shippingAddress.line1 || !shippingAddress.city) && session.customer) {
                             <h2>Thank you for your order, ${name || ""}!</h2>
                             <p>Your payment of ${(totalAmount/100).toFixed(2)} ${currency?.toUpperCase()} was successful.</p>
                             <h3>Order Details:</h3>
+                            <h3>Order ID: <strong>${newOrder._id}</strong></h3>
                             <ul>
                                 ${itemsToSave.map(i => `<li>${i.description} x ${i.quantity} (${(i.unit_amount/100).toFixed(2)} ${i.currency.toUpperCase()} each)</li>`).join("")}
                             </ul>
