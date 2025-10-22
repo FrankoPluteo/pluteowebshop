@@ -66,13 +66,7 @@ function Home() {
       <Navbar />
 
       <div className="home-background">
-        <div className="logo-shop-nishane">
-          <div className="logo-shop">
-            <img className="pluteologohome" src={pluteologo} alt="Pluteo Logo" />
-            <Link to="/products" className="go-to-shop" state={{ fromHome: true }}>SHOP</Link>
-          </div>
-          <img className="nishanejoemalone" src={nishanejoemalone} alt="Nishane and Jo Malone perfumes" />
-        </div>
+        <Link to="/products" className="go-to-shop" state={{ fromHome: true }}>SHOP</Link>
       </div>
 
       <div className="home-2">
