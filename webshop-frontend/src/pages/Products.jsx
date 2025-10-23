@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import '../styles/Products.css';
 import { useCart } from "../context/CartContext";
 import { Link, useLocation } from "react-router-dom";
-import pluteologo from "../images/pluteologo.svg";
+import pluteologo from "../../public/pluteoshort_dark.svg"
 import Navbar from "../components/Navbar";
 
 export default function Products() {
@@ -136,7 +136,11 @@ export default function Products() {
       const data = await res.json();
       console.log('Total products returned:', data.totalProducts);
       const cleanedProducts = data.products
-        .map(p => ({ ...p, price: parseFloat(p.price) || 0 }))
+        .map(p => ({ 
+          ...p, 
+          price: parseFloat(p.price) || 0,
+          salepercentage: p.salepercentage ? parseInt(p.salepercentage) : null
+        }))
         .filter(p => p.price >= 0);
 
       setProducts(cleanedProducts);
@@ -235,6 +239,10 @@ export default function Products() {
     return pageNumbers;
   };
 
+  const calculateSalePrice = (price, salePercentage) => {
+    return price * (1 - salePercentage / 100);
+  };
+
   return (
     <div style={{ padding: '20px', paddingTop: "100px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start", minHeight: "100vh", margin: 0, overflowX: "hidden", fontFamily: "Montserrat, sans-serif", color: "#333" }}>
       <Navbar />
@@ -300,6 +308,9 @@ export default function Products() {
               <Link to={`/product/${product.id}`} className="product-card-link" key={product.id} onClick={saveStateBeforeNavigate}>
                 <div className="product-card">
                   <div className="product-top">
+                    {product.salepercentage && (
+                      <span className="sale-badge">-{product.salepercentage}%</span>
+                    )}
                     <img
                       className="productImage"
                       src={product.image || '/placeholder.png'}
@@ -312,7 +323,14 @@ export default function Products() {
                       <div className="product-brand">{product.brand}</div>
                     </div>
                     <div className="price-add-to-cart">
-                      <p className="product-price">{(typeof product.price === 'number' ? product.price : 0).toFixed(2)}€</p>
+                      {product.salepercentage ? (
+                        <div className="price-container">
+                          <p className="product-price-original">{product.price.toFixed(2)}€</p>
+                          <p className="product-price-sale">{calculateSalePrice(product.price, product.salepercentage).toFixed(2)}€</p>
+                        </div>
+                      ) : (
+                        <p className="product-price">{product.price.toFixed(2)}€</p>
+                      )}
                       <button
                         className={`add-to-cart-btn ${animatingProduct === product.id ? 'added' : ''}`}
                         onClick={(e) => handleAddToCart(e, product)}

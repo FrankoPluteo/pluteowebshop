@@ -2,20 +2,22 @@ generator client {
   provider = "prisma-client-js"
 }
 
-
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
 model products {
-  id          Int     @id @default(autoincrement())
-  name        String  @db.VarChar(255)
-  brand       String  @db.VarChar(255)
-  description String?
-  gender      String? @db.VarChar(50)
-  image       String? @db.VarChar(255)
-  price       Decimal @db.Decimal(10, 2)
-  size        String? @db.VarChar(50)
-  attributes  Json?
+  id             Int     @id @default(autoincrement())
+  name           String  @db.VarChar(255)
+  brand          String  @db.VarChar(255)
+  description    String?
+  gender         String? @db.VarChar(50)
+  image          String? @db.VarChar(255)
+  price          Decimal @db.Decimal(10, 2)
+  size           String? @db.VarChar(50)
+  attributes     Json?
+  urllink        String? @db.VarChar(255)
+  salepercentage Int?
 }

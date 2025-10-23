@@ -27,7 +27,11 @@ export default function ProductDetail() {
           throw new Error(`HTTP error! status: ${res.status}`);
         }
         const data = await res.json();
-        setProduct({ ...data, price: parseFloat(data.price) || 0 });
+        setProduct({ 
+          ...data, 
+          price: parseFloat(data.price) || 0,
+          salepercentage: data.salepercentage ? parseInt(data.salepercentage) : null
+        });
       } catch (err) {
         console.error("Error fetching product details:", err);
         setError(err.message || "Failed to load product details.");
@@ -56,6 +60,10 @@ export default function ProductDetail() {
     navigate('/products');
   };
 
+  const calculateSalePrice = (price, salePercentage) => {
+    return price * (1 - salePercentage / 100);
+  };
+
   if (loading) return <div className="product-detail-container"><p>Loading product details...</p></div>;
   if (error) return <div className="product-detail-container"><p className="error-message">{error}</p><button onClick={handleBackToProducts} className="back-to-products-btn">Back to Products</button></div>;
   if (!product) return <div className="product-detail-container"><p>Product not found.</p><button onClick={handleBackToProducts} className="back-to-products-btn">Back to Products</button></div>;
@@ -77,6 +85,9 @@ export default function ProductDetail() {
 
       <div className="product-detail-card">
         <div className="product-detail-image-wrapper">
+          {product.salepercentage && (
+            <span className="sale-badge-detail">-{product.salepercentage}%</span>
+          )}
           <img
             className="product-detail-image"
             src={product.image || '/placeholder.png'}
@@ -87,12 +98,21 @@ export default function ProductDetail() {
         <div className="product-detail-info">
           <h2 className="product-detail-name">{product.name}</h2>
           <p className="product-detail-brand">{product.brand}</p>
-          <p className="product-detail-price">{product.price.toFixed(2)}€</p>
+          
+          {product.salepercentage ? (
+            <div className="price-detail-container">
+              <p className="product-detail-price-original">{product.price.toFixed(2)}€</p>
+              <p className="product-detail-price-sale">{calculateSalePrice(product.price, product.salepercentage).toFixed(2)}€</p>
+            </div>
+          ) : (
+            <p className="product-detail-price">{product.price.toFixed(2)}€</p>
+          )}
+          
           <p className="product-detail-description">{product.description || "No description available."}</p>
           <p className="product-detail-gender">Gender: {product.gender || "Unspecified"}</p>
 
           <button
-            className={`add-to-cart-btn ${added ? 'added' : ''}`}
+            className={`add-to-cart-detail-btn ${added ? 'added' : ''}`}
             onClick={handleAddToCart}
           >
             {added ? 'Added!' : 'Add to Cart'}

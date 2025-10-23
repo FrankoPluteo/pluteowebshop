@@ -33,32 +33,18 @@ body {
     margin: 75px;
     height: 500px;
     background: linear-gradient(to right, var(--color-dark), var(--color-light));
-}
-
-.logo-shop-nishane {
-    position: absolute;
-    right: 0;
     display: flex;
-    justify-content: end;
+    flex-direction: column;
+    justify-content: center;
+    gap: 40px;
     align-items: center;
-    width: 90%;
-    height: 100%;
 }
 
-.logo-shop {
-    display: flex;
-    align-items: center;
-    justify-content: baseline;
-    gap: 150px;
-    position: absolute;
-    left: 0;
-}
-
-.pluteologohome {
-    width: 400px;
+.pluteo-logo-long{
     position: relative;
-    left: 0;
+    width: 450px;
 }
+
 
 .go-to-shop {
     position: relative;
@@ -80,11 +66,6 @@ body {
     background-color: var(--color-dark);
     color: var(--color-white);
     transform: scale(1.1);
-}
-
-.nishanejoemalone {
-    width: 40%;
-    position: relative;
 }
 
 .home-2 {

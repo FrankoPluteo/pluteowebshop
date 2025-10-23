@@ -1,8 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import "../styles/Home.css";
 import Navbar from "../components/Navbar";
-import pluteologo from "../images/pluteologo.svg";
-import nishanejoemalone from "../images/nishanejomalone.svg";
+import pluteoLogoLong from "../../public/pluteo_logo_long.svg";
 import xerjoff from "../images/xerjoff.jpg";
 import erosflame from "../images/erosflame.jpg";
 
@@ -66,6 +65,7 @@ function Home() {
       <Navbar />
 
       <div className="home-background">
+        <img className="pluteo-logo-long" src={pluteoLogoLong}></img>
         <Link to="/products" className="go-to-shop" state={{ fromHome: true }}>SHOP</Link>
       </div>
 
