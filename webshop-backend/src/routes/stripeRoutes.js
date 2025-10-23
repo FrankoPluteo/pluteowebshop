@@ -34,16 +34,23 @@ router.post("/create-checkout-session", async (req, res) => {
         return res.status(404).json({ error: `Product with ID ${item.productId} not found.` });
       }
 
+      const salePercentage = dbProduct.salepercentage || 0;
+      const discountedPrice =
+        salePercentage > 0
+          ? dbProduct.price * (1 - salePercentage / 100)
+          : dbProduct.price;
+
       line_items.push({
         price_data: {
           currency: "eur",
           product_data: {
             name: dbProduct.name,
           },
-          unit_amount: Math.round(dbProduct.price * 100),
+          unit_amount: Math.round(discountedPrice * 100), // ✅ discounted amount in cents
         },
         quantity: item.quantity,
       });
+
     }
 
     const session = await stripe.checkout.sessions.create({

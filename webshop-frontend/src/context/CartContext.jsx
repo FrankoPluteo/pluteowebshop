@@ -22,29 +22,38 @@ export const CartProvider = ({ children }) => {
     }
   }, [cart]);
 
-  const addToCart = (product) => {
-    // Add validation to ensure product exists and has required properties
-    if (!product) {
-      console.error("Cannot add to cart: product is null or undefined");
-      return;
-    }
+const addToCart = (product) => {
+  if (!product) {
+    console.error("Cannot add to cart: product is null or undefined");
+    return;
+  }
 
-    if (!product.id) {
-      console.error("Cannot add to cart: product is missing id property", product);
-      return;
-    }
+  if (!product.id) {
+    console.error("Cannot add to cart: product is missing id property", product);
+    return;
+  }
 
-    setCart((prevCart) => {
-      const existingItem = prevCart.find((item) => item.id === product.id);
-      if (existingItem) {
-        return prevCart.map((item) =>
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
-        );
-      } else {
-        return [...prevCart, { ...product, quantity: 1 }];
-      }
-    });
-  };
+  // ✅ calculate discounted price once when adding to cart
+  const salePercentage = product.salepercentage || 0;
+  const finalPrice = salePercentage
+    ? product.price * (1 - salePercentage / 100)
+    : product.price;
+
+  setCart((prevCart) => {
+    const existingItem = prevCart.find((item) => item.id === product.id);
+    if (existingItem) {
+      return prevCart.map((item) =>
+        item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+      );
+    } else {
+      return [
+        ...prevCart,
+        { ...product, quantity: 1, finalPrice: parseFloat(finalPrice.toFixed(2)) },
+      ];
+    }
+  });
+};
+
 
   const increaseQuantity = (productId) => {
     if (!productId) {

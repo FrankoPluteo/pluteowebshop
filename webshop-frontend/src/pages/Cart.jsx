@@ -28,8 +28,11 @@ export default function Cart() {
   }
 
   const total = cart
-    .reduce((acc, item) => acc + parseFloat(item.price) * item.quantity, 0)
-    .toFixed(2);
+  .reduce(
+    (acc, item) => acc + parseFloat(item.finalPrice ?? item.price) * item.quantity,
+    0
+  )
+  .toFixed(2);
 
   const handleCheckout = async () => {
     try {
@@ -82,8 +85,9 @@ export default function Cart() {
               <h3 className="cart-item-name">{item.name}</h3>
               <p className="cart-item-brand">{item.brand}</p>
               <p className="cart-item-price">
-                €{(parseFloat(item.price) * item.quantity).toFixed(2)}
+                €{((item.finalPrice ?? item.price) * item.quantity).toFixed(2)}
               </p>
+
             </div>
             <div className="quantity-controls">
               <button

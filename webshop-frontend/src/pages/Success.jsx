@@ -2,7 +2,7 @@
 import React, { useEffect } from "react";
 import { useLocation, Link } from "react-router-dom";
 import { useCart } from "../context/CartContext";
-import pluteologosuccess from "../../public/pluteoshort_dark.svg"
+import pluteologosuccess from "../../public/pluteoshort.svg"
 
 export default function SuccessPage() {
   const location = useLocation();
