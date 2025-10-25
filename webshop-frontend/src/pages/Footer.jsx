@@ -1,5 +1,5 @@
 import "../styles/Footer.css"
-import pluteologo from "../images/pluteologo.svg";
+import pluteologo from "../../public/pluteo_logo_long.svg";
 
 const Footer = () => {
     return ( 
