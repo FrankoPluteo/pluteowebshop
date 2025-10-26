@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useCart } from "../context/CartContext";
 import { Link } from "react-router-dom";
-import "../styles/cart.css";
+import "../styles/Cart.css";
 
 export default function Cart() {
   const context = useCart();
