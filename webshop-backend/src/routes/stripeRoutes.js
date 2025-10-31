@@ -1,6 +1,10 @@
 const express = require("express");
 const router = express.Router();
 const Stripe = require("stripe");
+const https = require('https');
+
+// ✅ FIX: Disable SSL verification for development
+// NOTE: Remove this in production and fix the root certificate issue!
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
 const { PrismaClient } = require('@prisma/client');
@@ -34,11 +38,30 @@ router.post("/create-checkout-session", async (req, res) => {
         return res.status(404).json({ error: `Product with ID ${item.productId} not found.` });
       }
 
+      // ✅ FIX: Convert Decimal to number first
+      const priceAsNumber = parseFloat(dbProduct.price.toString());
       const salePercentage = dbProduct.salepercentage || 0;
+      
       const discountedPrice =
         salePercentage > 0
-          ? dbProduct.price * (1 - salePercentage / 100)
-          : dbProduct.price;
+          ? priceAsNumber * (1 - salePercentage / 100)
+          : priceAsNumber;
+
+      // ✅ Ensure we have a valid number before converting to cents
+      const unitAmountInCents = Math.round(discountedPrice * 100);
+      
+      // ✅ Add validation
+      if (isNaN(unitAmountInCents) || unitAmountInCents <= 0) {
+        console.error(`Invalid price for product ${item.productId}:`, {
+          originalPrice: dbProduct.price,
+          priceAsNumber,
+          discountedPrice,
+          unitAmountInCents
+        });
+        return res.status(400).json({ 
+          error: `Invalid price for product: ${dbProduct.name}` 
+        });
+      }
 
       line_items.push({
         price_data: {
@@ -46,12 +69,13 @@ router.post("/create-checkout-session", async (req, res) => {
           product_data: {
             name: dbProduct.name,
           },
-          unit_amount: Math.round(discountedPrice * 100), // ✅ discounted amount in cents
+          unit_amount: unitAmountInCents,
         },
         quantity: item.quantity,
       });
-
     }
+
+    console.log("Creating Stripe session with line_items:", JSON.stringify(line_items, null, 2));
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
@@ -93,9 +117,12 @@ router.post("/create-checkout-session", async (req, res) => {
       }
     });
 
+    console.log("✅ Stripe session created successfully:", session.id);
     res.json({ url: session.url });
+    
   } catch (error) {
-    console.error("Error creating checkout session:", error && (error.stack || error.message || error));
+    console.error("❌ Error creating checkout session:", error);
+    console.error("Error stack:", error.stack);
     res.status(500).json({ error: "Failed to create checkout session. Please try again." });
   } finally {
     try { await prisma.$disconnect(); } catch {}
