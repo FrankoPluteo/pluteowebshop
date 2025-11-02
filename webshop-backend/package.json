@@ -2,16 +2,13 @@
   "name": "webshop-backend",
   "version": "1.0.0",
   "description": "Backend for PerfumeShop using Node.js, Express, and Prisma with PostgreSQL",
-  "main": "server.js",
+  "main": "src/server.js",
   "scripts": {
-    "dev": "nodemon server.js",
-    "start": "node server.js",
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js",
     "postinstall": "npx prisma generate",
     "prestart": "npx prisma migrate deploy || true"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
     "@prisma/client": "^6.16.3",
     "cloudinary": "^2.7.0",
