@@ -8,21 +8,6 @@ datasource db {
   shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
-/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
-model products {
-  id             Int     @id
-  name           String  @db.VarChar(255)
-  brand          String  @db.VarChar(255)
-  description    String?
-  gender         String? @db.VarChar(50)
-  image          String? @db.VarChar(255)
-  price          Decimal @db.Decimal(10, 2)
-  size           String? @db.VarChar(50)
-  attributes     Json?
-  urllink        String? @db.VarChar(255)
-  salepercentage Int?
-}
-
 model Order {
   id                Int       @id @default(autoincrement())
   stripeSessionId   String    @unique
@@ -35,5 +20,19 @@ model Order {
   paymentStatus     String?   @default("pending")
   dropshipperStatus String?   @default("not_sent")
   createdAt         DateTime? @default(now()) @db.Timestamp(6)
-  updatedAt         DateTime? @default(now()) @updatedAt @db.Timestamp(6)
+  updatedAt         DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model products {
+  id             Int      @id
+  name           String?  @db.VarChar(255)
+  brand          String?  @db.VarChar(255)
+  description    String?
+  gender         String?  @db.VarChar(50)
+  image          String?  @db.VarChar(255)
+  price          Decimal? @db.Decimal(10, 2)
+  size           String?  @db.VarChar(50)
+  attributes     Json?
+  urllink        String?  @db.VarChar(255)
+  salepercentage Int?
 }
