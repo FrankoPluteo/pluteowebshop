@@ -319,8 +319,8 @@ export default function Products() {
                   </div>
                   <div className="product-bottom">
                     <div className="product-info">
-                      <div className="product-size">{product.size}</div>
                       <div className="product-name">{product.name}</div>
+                      <div className="product-size">{product.size}</div>
                       <div className="product-brand">{product.brand}</div>
                     </div>
                     <div className="price-add-to-cart">

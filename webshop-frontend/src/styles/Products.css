@@ -204,6 +204,9 @@
   font-size: 15px;
   display: flex;
   justify-content: center;
+  top: 20px;
+  position: relative;
+  color: #999;
 }
 
 .product-name {

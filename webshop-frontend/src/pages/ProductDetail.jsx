@@ -98,6 +98,7 @@ export default function ProductDetail() {
         <div className="product-detail-info">
           <h2 className="product-detail-name">{product.name}</h2>
           <p className="product-detail-brand">{product.brand}</p>
+          <p className='product-detail-brand'>{product.size}</p>
           
           {product.salepercentage ? (
             <div className="price-detail-container">
