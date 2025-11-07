@@ -15,19 +15,6 @@ body {
     background-color: var(--color-white);
 }
 
-/* Base styles for desktop view */
-.navbar {
-    position: absolute;
-    top: 37.5px;
-    left: 50%;
-    transform: translate(-50%, -50%); /* X then Y */
-    display: flex;
-    justify-content: center;
-    gap: 150px;
-    padding: 10px;
-    font-family: Montserrat;
-}
-
 .home-background {
     position: relative;
     margin: 75px;
@@ -138,29 +125,24 @@ body {
 
 @media (max-width: 768px) {
     .home-background {
-        margin: 30px;
+        margin-top: 50px;
+        margin-left: 30px;
+        margin-right: 30px;
+        margin-bottom: 30px;
         height: 200px;
+        gap: 10%;
     }
 
-    .logo-shop-nishane {
-        flex-direction: column;
-        justify-content: baseline;
-        width: 100%;
+    .go-to-shop{
+        font-size: 20px;
+        height: 10%;
+        width: 100px;
+        background-color: white;
     }
 
-    .logo-shop {
-        flex-direction: column;
-        top: 10%;
-        gap: 50px;
-        width: 100%;
-    }
 
-    .pluteologohome {
-        width: 80%;
-    }
-
-    .nishanejoemalone {
-        display: none;
+    .pluteo-logo-long{
+        width: 200px;
     }
 
     .home-2, .home-3 {

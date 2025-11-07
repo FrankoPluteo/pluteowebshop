@@ -199,13 +199,23 @@
   gap: 10px;
 }
 
+.product-size{
+  width: 100%;
+  font-size: 15px;
+  display: flex;
+  justify-content: center;
+  top: 20px;
+  position: relative;
+  color: #999;
+}
+
 .product-name {
   width: 100%;
   font-size: 20px;
   display: flex;
   justify-content: center;
   position: relative;
-  top: 30px;
+  top: 20px;
   text-align: center;
   font-family: Montserrat;
   font-weight: 600;
@@ -217,7 +227,7 @@
   display: flex;
   justify-content: center;
   position: relative;
-  top: 30px;
+  top: 20px;
   font-family: Montserrat;
 }
 
