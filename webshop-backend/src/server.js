@@ -5,8 +5,10 @@ const express = require("express");
 const startServer = async () => {
   try {
     const stripeWebhooks = require("./routes/stripeWebhooks");
+    // Mount webhooks BEFORE json parsing
     app.use("/api/stripe-webhooks", stripeWebhooks);
 
+    // Then enable json parsing for other routes
     app.use(express.json());
 
     const stripeRoutes = require("./routes/stripeRoutes");
