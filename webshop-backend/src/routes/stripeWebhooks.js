@@ -67,6 +67,9 @@ router.post(
             user: process.env.EMAIL_USER,
             pass: process.env.EMAIL_PASS,
           },
+          tls: {
+            rejectUnauthorized: false, // <-- this line fixes "self-signed certificate" error
+          },
         });
 
         const mailOptions = {
