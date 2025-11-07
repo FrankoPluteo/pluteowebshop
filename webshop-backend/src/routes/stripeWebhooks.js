@@ -1,76 +1,64 @@
-// routes/stripeWebhooks.js
 const express = require("express");
 const router = express.Router();
-const bodyParser = require("body-parser");
 const Stripe = require("stripe");
 const nodemailer = require("nodemailer");
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-// Stripe requires the raw body for signature verification
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+// ✅ Webhook must receive raw body — NOT JSON parsed
 router.post(
   "/",
-  bodyParser.raw({ type: "application/json" }),
+  express.raw({ type: "application/json" }),
   async (req, res) => {
     const sig = req.headers["stripe-signature"];
-
     let event;
+
     try {
-      event = stripe.webhooks.constructEvent(
-        req.body,
-        sig,
-        process.env.STRIPE_WEBHOOK_SECRET
-      );
+      event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
     } catch (err) {
-      console.error("❌ Webhook signature verification failed:", err.message);
+      console.error("⚠️  Webhook signature verification failed:", err.message);
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
-    // Handle checkout session completed
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
+      console.log("✅ Checkout session completed:", session.id);
 
       try {
-        // Extract user details from new API shape
-        const customerEmail = session.customer_details?.email || "unknown";
-        const shippingInfo =
-          session.collected_information?.shipping_details ||
-          session.customer_details;
+        // Retrieve full session with line items
+        const fullSession = await stripe.checkout.sessions.retrieve(session.id, {
+          expand: ["line_items", "line_items.data.price.product"],
+        });
 
-        const shippingAddress = {
-          name: shippingInfo?.name,
-          line1: shippingInfo?.address?.line1,
-          city: shippingInfo?.address?.city,
-          postal_code: shippingInfo?.address?.postal_code,
-          country: shippingInfo?.address?.country,
-        };
+        const customerDetails = session.customer_details || {};
+        const shippingDetails = customerDetails.address || {};
 
-        console.log("✅ Shipping info:", shippingAddress);
-
-        // Retrieve line items
-        const lineItems = await stripe.checkout.sessions.listLineItems(session.id);
-        const items = lineItems.data.map((item) => ({
+        const items = fullSession.line_items.data.map((item) => ({
           name: item.description,
           quantity: item.quantity,
-          amount: item.amount_total / 100,
+          price: item.amount_total / 100,
         }));
 
-        // Save order to database
-        const order = await prisma.order.create({
+        // 💾 Save order in database
+        await prisma.order.create({
           data: {
             stripeSessionId: session.id,
-            customerEmail,
+            customerEmail: customerDetails.email || "unknown",
+            customerName: customerDetails.name || "No name provided",
+            shippingAddress: shippingDetails,
+            totalAmount: session.amount_total,
+            currency: session.currency,
             items,
-            total: session.amount_total / 100,
-            shippingAddress: shippingAddress,
-            paymentStatus: session.payment_status,
+            paymentStatus: session.payment_status || "pending",
           },
         });
 
-        console.log("✅ Order saved to DB:", order.id);
+        console.log("💾 Order saved to database");
 
-        // --- SEND CONFIRMATION EMAIL ---
+        // ✉️ Send confirmation email
         const transporter = nodemailer.createTransport({
           host: process.env.EMAIL_HOST,
           port: process.env.EMAIL_PORT,
@@ -81,40 +69,38 @@ router.post(
           },
         });
 
-        const itemList = items
-          .map(
-            (i) =>
-              `<li>${i.name} (x${i.quantity}) - €${i.amount.toFixed(2)}</li>`
-          )
-          .join("");
-
         const mailOptions = {
-          from: `"Pluteo Webshop" <${process.env.EMAIL_USER}>`,
-          to: customerEmail,
-          subject: "Your Pluteo order confirmation",
+          from: `"Pluteo Shop" <${process.env.EMAIL_USER}>`,
+          to: customerDetails.email,
+          subject: "Your Pluteo Order Confirmation",
           html: `
-            <h2>Thank you for your purchase, ${shippingAddress.name}!</h2>
-            <p>Your order has been received and is being processed.</p>
-            <h3>Order Details</h3>
-            <ul>${itemList}</ul>
-            <p><strong>Total:</strong> €${(session.amount_total / 100).toFixed(
-              2
-            )}</p>
-            <h3>Shipping Address</h3>
+            <h2>Thank you for your order, ${customerDetails.name || "Customer"}!</h2>
+            <p>We have received your payment of <strong>${session.amount_total / 100} ${session.currency.toUpperCase()}</strong>.</p>
+            <h3>Order summary:</h3>
+            <ul>
+              ${items
+                .map(
+                  (item) =>
+                    `<li>${item.quantity}x ${item.name} - €${item.price.toFixed(2)}</li>`
+                )
+                .join("")}
+            </ul>
+            <h3>Shipping address:</h3>
             <p>
-              ${shippingAddress.name}<br>
-              ${shippingAddress.line1}<br>
-              ${shippingAddress.city}, ${shippingAddress.postal_code}<br>
-              ${shippingAddress.country}
+              ${shippingDetails.line1 || ""}<br>
+              ${shippingDetails.city || ""}, ${shippingDetails.postal_code || ""}<br>
+              ${shippingDetails.country || ""}
             </p>
-            <p>We’ll notify you once your order has shipped.</p>
+            <p>You will receive another email once your order has been shipped.</p>
           `,
         };
 
         await transporter.sendMail(mailOptions);
-        console.log("📧 Confirmation email sent to", customerEmail);
+        console.log("📧 Confirmation email sent to", customerDetails.email);
+
       } catch (err) {
-        console.error("❌ Error handling checkout session:", err);
+        console.error("❌ Error processing checkout.session.completed:", err);
+        return res.status(500).send("Internal Server Error");
       }
     }
 
