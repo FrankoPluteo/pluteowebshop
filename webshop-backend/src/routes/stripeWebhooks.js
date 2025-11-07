@@ -4,8 +4,8 @@ const router = express.Router();
 const bodyParser = require("body-parser");
 const Stripe = require("stripe");
 const nodemailer = require("nodemailer");
-const prisma = require("../prismaClient");
-
+const { PrismaClient } = require("@prisma/client");
+const prisma = new PrismaClient();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // Stripe requires the raw body for signature verification
