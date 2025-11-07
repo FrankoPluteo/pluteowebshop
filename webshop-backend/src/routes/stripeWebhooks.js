@@ -6,10 +6,9 @@ const nodemailer = require("nodemailer");
 const { PrismaClient } = require("@prisma/client");
 
 const prisma = new PrismaClient();
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
-// ✅ Important: raw body middleware must be used
 router.post(
   "/",
   express.raw({ type: "application/json" }),
@@ -20,62 +19,85 @@ router.post(
     try {
       event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
     } catch (err) {
-      console.error("❌ Webhook signature verification failed:", err.message);
+      console.error("❌ Invalid Stripe signature:", err.message);
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
-    // ✅ Handle successful checkout
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
 
       try {
-        // 1️⃣ Save order in database
+        // Retrieve line items (requires API call)
+        const lineItems = await stripe.checkout.sessions.listLineItems(
+          session.id,
+          { limit: 100 }
+        );
+
+        // Avoid duplicate orders
+        const existing = await prisma.order.findUnique({
+          where: { stripeSessionId: session.id },
+        });
+
+        if (existing) {
+          console.log("⚠️ Order already exists:", existing.id);
+          return res.json({ received: true });
+        }
+
+        // Create new order
         const newOrder = await prisma.order.create({
           data: {
             stripeSessionId: session.id,
-            customerEmail: session.customer_details.email,
-            customerName: session.customer_details.name,
+            customerEmail: session.customer_details?.email || "unknown",
+            customerName: session.customer_details?.name || null,
             shippingAddress: session.shipping_details?.address || {},
             totalAmount: session.amount_total / 100,
             currency: session.currency,
-            items: session.display_items || [],
+            items: lineItems.data.map((item) => ({
+              description: item.description,
+              quantity: item.quantity,
+              unit_amount: item.price.unit_amount / 100,
+              currency: item.price.currency,
+            })),
             paymentStatus: session.payment_status,
           },
         });
 
-        console.log("✅ Order saved to DB:", newOrder.id);
+        console.log("✅ Order saved:", newOrder.id);
 
-        // 2️⃣ Send confirmation email
-        const transporter = nodemailer.createTransport({
-          host: process.env.EMAIL_HOST,
-          port: process.env.EMAIL_PORT,
-          secure: false,
-          auth: {
-            user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASS,
-          },
-        });
+        // --- Email sending ---
+        try {
+          const transporter = nodemailer.createTransport({
+            host: process.env.EMAIL_HOST,
+            port: process.env.EMAIL_PORT,
+            secure: false,
+            auth: {
+              user: process.env.EMAIL_USER,
+              pass: process.env.EMAIL_PASS,
+            },
+            connectionTimeout: 10000, // 10 seconds
+          });
 
-        const mailOptions = {
-          from: `"Pluteo Webshop" <${process.env.EMAIL_USER}>`,
-          to: newOrder.customerEmail,
-          subject: "Your Pluteo Order Confirmation",
-          html: `
-            <h2>Thank you for your purchase, ${newOrder.customerName || "customer"}!</h2>
-            <p>We’ve received your order successfully.</p>
-            <p><b>Total:</b> €${(newOrder.totalAmount).toFixed(2)}</p>
-            <p>We’ll notify you when your order is shipped.</p>
-            <br/>
-            <p>Kind regards,</p>
-            <p><b>Pluteo Team</b></p>
-          `,
-        };
+          const mailOptions = {
+            from: `"Pluteo Webshop" <${process.env.EMAIL_USER}>`,
+            to: newOrder.customerEmail,
+            subject: "Your Pluteo Order Confirmation",
+            html: `
+              <h2>Thank you for your order, ${newOrder.customerName || "customer"}!</h2>
+              <p><b>Total:</b> €${(newOrder.totalAmount).toFixed(2)}</p>
+              <p>We’ll send you another email once your order ships.</p>
+              <br/>
+              <p>Kind regards,<br/><b>Pluteo Team</b></p>
+            `,
+          };
 
-        await transporter.sendMail(mailOptions);
-        console.log("📧 Confirmation email sent to:", newOrder.customerEmail);
+          await transporter.sendMail(mailOptions);
+          console.log("📧 Email sent to:", newOrder.customerEmail);
+        } catch (emailErr) {
+          console.error("❌ Email failed:", emailErr.message);
+        }
 
-      } catch (dbErr) {
-        console.error("❌ Failed to process webhook:", dbErr);
+      } catch (err) {
+        console.error("❌ Webhook handler error:", err);
       }
     }
 
