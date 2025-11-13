@@ -60,6 +60,28 @@ function Home() {
     navigate('/products', { state: { applyFilters: true } });
   };
 
+  const handleMensClick = () => {
+    // Clear sessionStorage first
+    sessionStorage.clear();
+    
+    // Store filter data in sessionStorage to be picked up by Products component
+    sessionStorage.setItem('gender', 'male');
+    sessionStorage.setItem('currentPage', '1');
+    
+    navigate('/products', { state: { applyFilters: true } });
+  };
+
+  const handleWomensClick = () => {
+    // Clear sessionStorage first
+    sessionStorage.clear();
+    
+    // Store filter data in sessionStorage to be picked up by Products component
+    sessionStorage.setItem('gender', 'female');
+    sessionStorage.setItem('currentPage', '1');
+    
+    navigate('/products', { state: { applyFilters: true } });
+  };
+
   return (
     <div>
       <Navbar />
@@ -67,6 +89,14 @@ function Home() {
       <div className="home-background">
         <img className="pluteo-logo-long" src={pluteoLogoLong}></img>
         <Link to="/products" className="go-to-shop" state={{ fromHome: true }}>SHOP</Link>
+
+        <div className="filter-link-box">
+          <div className="filter-link" onClick={handleMensClick}>MEN'S</div>
+          <div className="filter-link" onClick={handleWomensClick}>WOMEN'S</div>
+          <div className="filter-link" onClick={handleNicheClick}>NICHE</div>
+          <div className="filter-link" onClick={handleDesignerClick}>DESIGNER</div>
+        </div>
+
       </div>
 
       <div className="home-2">
