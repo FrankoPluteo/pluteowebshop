@@ -2,7 +2,6 @@
 const express = require("express");
 const router = express.Router();
 const Stripe = require("stripe");
-const nodemailer = require("nodemailer");
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
@@ -62,29 +61,18 @@ router.post(
         });
         console.log("💾 Order saved to database:", order.id);
 
-        // ✉️ Send confirmation email
-        const transporter = nodemailer.createTransport({
-          host: process.env.EMAIL_HOST,
-          port: process.env.EMAIL_PORT,
-          secure: process.env.EMAIL_PORT == 465, // true for 465, false for 587
-          auth: {
-            user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASS,
-          },
-          tls: {
-            rejectUnauthorized: false, // bypass self-signed certs
-          },
-        });
+        // 📧 Send confirmation email using SendGrid
+        const sgMail = require("@sendgrid/mail");
+        sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
-        console.log("📧 Transporter created, attempting to send email to", customerDetails.email);
-
-        const mailOptions = {
-          from: `"Pluteo Shop" <${process.env.EMAIL_USER}>`,
+        const msg = {
           to: customerDetails.email,
+          from: process.env.FROM_EMAIL,
           subject: "Your Pluteo Order Confirmation",
           html: `
             <h2>Thank you for your order, ${customerDetails.name || "Customer"}!</h2>
-            <p>We have received your payment of <strong>${session.amount_total / 100} ${session.currency.toUpperCase()}</strong>.</p>
+            <p>We received your payment of <strong>${session.amount_total / 100} ${session.currency.toUpperCase()}</strong>.</p>
+
             <h3>Order summary:</h3>
             <ul>
               ${items
@@ -94,22 +82,28 @@ router.post(
                 )
                 .join("")}
             </ul>
+
             <h3>Shipping address:</h3>
             <p>
               ${shippingDetails.line1 || ""}<br>
               ${shippingDetails.city || ""}, ${shippingDetails.postal_code || ""}<br>
               ${shippingDetails.country || ""}
             </p>
-            <p>You will receive another email once your order has been shipped.</p>
+
+            <p>You will receive another email once your order is shipped.</p>
           `,
         };
 
-        try {
-          const info = await transporter.sendMail(mailOptions);
-          console.log("✅ Confirmation email sent:", info.response);
-        } catch (emailErr) {
-          console.error("❌ Failed to send confirmation email:", emailErr);
-        }
+try {
+  await sgMail.send(msg);
+  console.log("📧 Confirmation email sent via SendGrid!");
+} catch (error) {
+  console.error("❌ SendGrid error:", error);
+  if (error.response) {
+    console.error(error.response.body);
+  }
+}
+
       } catch (err) {
         console.error("❌ Error processing checkout.session.completed:", err);
         return res.status(500).send("Internal Server Error");
