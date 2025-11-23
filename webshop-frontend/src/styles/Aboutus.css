@@ -23,3 +23,12 @@
   color: #555;
   margin-bottom: 1rem;
 }
+
+@media (max-width: 768px) {
+
+  .about-container{
+    width: 80%;
+    margin-top: 80px;
+  }
+
+}

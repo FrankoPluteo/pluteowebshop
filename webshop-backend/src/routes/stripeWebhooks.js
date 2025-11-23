@@ -8,6 +8,7 @@ const prisma = new PrismaClient();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
+
 // ✅ Webhook must receive raw body — NOT JSON parsed
 router.post(
   "/",

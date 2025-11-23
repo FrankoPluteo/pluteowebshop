@@ -172,7 +172,12 @@ body {
 
 
     .pluteo-logo-long{
-        width: 200px;
+        width: 150px;
+    }
+
+    .filter-link{
+        font-size: 10px;
+        border-bottom: 1px solid var(--color-dark);
     }
 
     .home-2, .home-3 {
