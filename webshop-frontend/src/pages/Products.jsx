@@ -125,7 +125,20 @@ export default function Products() {
     if (search) url += `&search=${encodeURIComponent(search)}`;
     if (selectedBrands.length > 0) url += `&brands=${encodeURIComponent(selectedBrands.join(','))}`;
     if (maxPrice > 0 && maxPrice < overallMaxProductPrice) url += `&maxPrice=${maxPrice}`;
-    if (gender) url += `&gender=${encodeURIComponent(gender)}`;
+
+    if (gender) {
+      // Treat "male" and "female" as including "unisex"
+      let genderParam = gender;
+
+      if (gender === 'male') {
+        genderParam = 'male,unisex';
+      } else if (gender === 'female') {
+        genderParam = 'female,unisex';
+      }
+
+      url += `&gender=${encodeURIComponent(genderParam)}`;
+    }
+
 
     console.log('Fetching URL:', url);
     console.log('Selected Brands:', selectedBrands);
