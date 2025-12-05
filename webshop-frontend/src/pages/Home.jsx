@@ -10,33 +10,53 @@ function Home() {
 
   // Define your niche and designer brands here
   const nicheBrands = [
+    "Montale Paris",
     "Nishane",
     "Creed",
-    "Xerjoff",
-    "Jo Malone",
-    "Initio",
+    "Tom Ford",
     "Parfums de Marly",
-    "Tiziana Terenzi"
+    "Tiziana Terenzi",
+    "Initio",
+    "Van Cleef & Arpels",
+    "Xerjoff",
+    "Cartier",
+    "Guerlain",
+    "Jo Malone"
   ];
 
+
   const designerBrands = [
-    "Versace",
-    "Dolce&Gabbana",
-    "Dior",
-    "Chanel",
-    "Givenchy",
-    "Gucci",
-    "Lancome",
-    "Narciso Rodriguez",
-    "Yves Saint Laurent",
     "Tom Ford",
-    "Valentino",
-    "Armani",
-    "Prada",
+    "Cartier",
+    "Yves Saint Laurent",
+    "Marc Jacobs",
+    "Narciso Rodriguez",
+    "Dior",
+    "Mugler",
+    "Bvlgari",
     "Paco Rabanne",
-    "Jean Paul Gaultier",
-    "Hugo Boss"
+    "Nina Ricci",
+    "Givenchy",
+    "Lancome",
+    "Dolce & Gabbana",
+    "Montblanc",
+    "Burberry",
+    "Prada",
+    "Shiseido",
+    "Cacharel",
+    "Chloe",
+    "Gucci",
+    "Lalique",
+    "Michael Kors",
+    "Giorgio Armani",
+    "Versace",
+    "Valentino",
+    "Calvin Klein",
+    "Davidoff",
+    "Chanel",
+    "Jean Paul Gaultier"
   ];
+
 
   const handleNicheClick = () => {
     // Clear sessionStorage first
