@@ -125,20 +125,7 @@ export default function Products() {
     if (search) url += `&search=${encodeURIComponent(search)}`;
     if (selectedBrands.length > 0) url += `&brands=${encodeURIComponent(selectedBrands.join(','))}`;
     if (maxPrice > 0 && maxPrice < overallMaxProductPrice) url += `&maxPrice=${maxPrice}`;
-
-    if (gender) {
-      // Treat "male" and "female" as including "unisex"
-      let genderParam = gender;
-
-      if (gender === 'male') {
-        genderParam = 'male,unisex';
-      } else if (gender === 'female') {
-        genderParam = 'female,unisex';
-      }
-
-      url += `&gender=${encodeURIComponent(genderParam)}`;
-    }
-
+    if (gender) url += `&gender=${encodeURIComponent(gender)}`;
 
     console.log('Fetching URL:', url);
     console.log('Selected Brands:', selectedBrands);
@@ -301,10 +288,21 @@ export default function Products() {
             <input type="range" min="0" max={overallMaxProductPrice} value={tempMaxPrice} onChange={e => setTempMaxPrice(Number(e.target.value))} />
           </div>
 
-          <select value={tempGender} onChange={e => setTempGender(e.target.value)} className="gender-select">
+          <select
+            value={tempGender}
+            onChange={e => setTempGender(e.target.value)}
+            className="gender-select"
+          >
             <option value="">All Genders</option>
-            {allAvailableGenders.map((g, idx) => <option key={idx} value={g.toLowerCase()}>{g}</option>)}
+            {allAvailableGenders
+              .filter(g => g.toLowerCase() !== 'unisex') // hide unisex from options
+              .map((g, idx) => (
+                <option key={idx} value={g.toLowerCase()}>
+                  {g}
+                </option>
+              ))}
           </select>
+
 
           <div className="filter-buttons">
             <button className="apply-btn" onClick={applyFilters}>Apply Filters</button>

@@ -29,8 +29,18 @@ exports.getAllProducts = async (req, res) => {
             whereClause.price = { lte: maxPrice };
         }
         if (gender) {
-            whereClause.gender = { equals: gender, mode: 'insensitive' };
+            if (gender === 'male' || gender === 'female') {
+                // Male or female should also include unisex
+                whereClause.gender = { in: [gender, 'unisex'] };
+            } else if (gender === 'unisex') {
+                // If you ever explicitly search unisex only
+                whereClause.gender = { equals: 'unisex' };
+            } else {
+                // Any other value, match directly
+                whereClause.gender = { equals: gender };
+            }
         }
+
 
         const products = await prisma.products.findMany({
             skip: skip,
