@@ -63,16 +63,23 @@ router.post("/create-checkout-session", async (req, res) => {
         });
       }
 
+      // src/routes/stripeRoutes.js
       line_items.push({
         price_data: {
           currency: "eur",
           product_data: {
             name: dbProduct.name,
+            metadata: {                      
+              productId: dbProduct.id.toString(),
+            },
           },
           unit_amount: unitAmountInCents,
         },
         quantity: item.quantity,
       });
+
+
+
     }
 
     console.log("Creating Stripe session with line_items:", JSON.stringify(line_items, null, 2));
