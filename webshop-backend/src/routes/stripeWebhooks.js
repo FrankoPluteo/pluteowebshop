@@ -38,7 +38,7 @@ async function sendOrderToBigBuy(order, bigBuyItems, customerDetails, shippingDe
       order: {
         internalReference: `ORDER_${order.id}`,
         language: "en",
-        paymentMethod: "bankwire", // or your preferred method
+        paymentMethod: "moneybox", // or your preferred method
         carriers: [
           { name: "gls" }, // adjust carrier if needed, must be valid in BigBuy
         ],
