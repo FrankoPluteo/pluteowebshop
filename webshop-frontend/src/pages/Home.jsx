@@ -121,16 +121,18 @@ function Home() {
 
       <div className="home-2">
         <div className="home-2-1">
-          <img src={xerjoff} className="xerjoffhome" alt="Xerjoff perfume" />
-          <button className="shop-niche" onClick={handleNicheClick}>
-            SHOP NICHE
-          </button>
-        </div>
 
-        <div className="home-2-2">
           <img id="erosflame" src={erosflame} className="xerjoffhome" alt="Eros Flame perfume" />
           <button className="shop-niche" onClick={handleDesignerClick}>
             SHOP DESIGNER
+          </button>
+          
+        </div>
+
+        <div className="home-2-2">
+          <img src={xerjoff} className="xerjoffhome" alt="Xerjoff perfume" />
+          <button className="shop-niche" onClick={handleNicheClick}>
+            SHOP NICHE
           </button>
         </div>
       </div>
