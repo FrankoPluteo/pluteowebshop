@@ -3,6 +3,9 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import '../styles/ProductDetail.css';
 
+import posthog from "posthog-js";
+
+
 export default function ProductDetail() {
   const { productId } = useParams();
   const navigate = useNavigate();
@@ -32,6 +35,15 @@ export default function ProductDetail() {
           price: parseFloat(data.price) || 0,
           salepercentage: data.salepercentage ? parseInt(data.salepercentage) : null
         });
+
+        posthog.capture("product_viewed", {
+          product_id: data.id,
+          product_name: data.name,
+          brand: data.brand,
+          price: parseFloat(data.price) || 0,
+          salepercentage: data.salepercentage ? parseInt(data.salepercentage) : null,
+        });
+
       } catch (err) {
         console.error("Error fetching product details:", err);
         setError(err.message || "Failed to load product details.");
@@ -50,6 +62,16 @@ export default function ProductDetail() {
   const handleAddToCart = () => {
     if (!product || !product.id) return;
     addToCart(product);
+
+    posthog.capture("add_to_cart", {
+      product_id: product.id,
+      product_name: product.name,
+      brand: product.brand,
+      price: product.price,
+      salepercentage: product.salepercentage ?? null,
+      source: "product_detail",
+    });
+
     setAdded(true);
     setCartAnimating(true);
     setTimeout(() => { setAdded(false); setCartAnimating(false); }, 600);

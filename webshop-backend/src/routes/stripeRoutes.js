@@ -1,14 +1,17 @@
 const express = require("express");
 const router = express.Router();
 const Stripe = require("stripe");
-const https = require('https');
+const https = require("https");
 
 // ✅ FIX: Disable SSL verification for development
 // NOTE: Remove this in production and fix the root certificate issue!
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
+
+// ✅ PostHog (server-side)
+const posthog = require("../posthogClient");
 
 // POST /api/stripe/create-checkout-session
 router.post("/create-checkout-session", async (req, res) => {
@@ -22,26 +25,30 @@ router.post("/create-checkout-session", async (req, res) => {
   try {
     for (const item of cartItems) {
       if (
-        typeof item.productId !== 'number' ||
+        typeof item.productId !== "number" ||
         item.productId <= 0 ||
-        typeof item.quantity !== 'number' ||
+        typeof item.quantity !== "number" ||
         item.quantity <= 0
       ) {
-        return res.status(400).json({ error: "Invalid product ID or quantity in cart." });
+        return res
+          .status(400)
+          .json({ error: "Invalid product ID or quantity in cart." });
       }
 
       const dbProduct = await prisma.products.findUnique({
-        where: { id: item.productId }
+        where: { id: item.productId },
       });
 
       if (!dbProduct) {
-        return res.status(404).json({ error: `Product with ID ${item.productId} not found.` });
+        return res
+          .status(404)
+          .json({ error: `Product with ID ${item.productId} not found.` });
       }
 
       // ✅ FIX: Convert Decimal to number first
       const priceAsNumber = parseFloat(dbProduct.price.toString());
       const salePercentage = dbProduct.salepercentage || 0;
-      
+
       const discountedPrice =
         salePercentage > 0
           ? priceAsNumber * (1 - salePercentage / 100)
@@ -49,17 +56,17 @@ router.post("/create-checkout-session", async (req, res) => {
 
       // ✅ Ensure we have a valid number before converting to cents
       const unitAmountInCents = Math.round(discountedPrice * 100);
-      
+
       // ✅ Add validation
       if (isNaN(unitAmountInCents) || unitAmountInCents <= 0) {
         console.error(`Invalid price for product ${item.productId}:`, {
           originalPrice: dbProduct.price,
           priceAsNumber,
           discountedPrice,
-          unitAmountInCents
+          unitAmountInCents,
         });
-        return res.status(400).json({ 
-          error: `Invalid price for product: ${dbProduct.name}` 
+        return res.status(400).json({
+          error: `Invalid price for product: ${dbProduct.name}`,
         });
       }
 
@@ -69,7 +76,7 @@ router.post("/create-checkout-session", async (req, res) => {
           currency: "eur",
           product_data: {
             name: dbProduct.name,
-            metadata: {                      
+            metadata: {
               productId: dbProduct.id.toString(),
             },
           },
@@ -77,16 +84,16 @@ router.post("/create-checkout-session", async (req, res) => {
         },
         quantity: item.quantity,
       });
-
-
-
     }
 
-    console.log("Creating Stripe session with line_items:", JSON.stringify(line_items, null, 2));
+    console.log(
+      "Creating Stripe session with line_items:",
+      JSON.stringify(line_items, null, 2)
+    );
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
-      mode: 'payment',
+      mode: "payment",
       line_items,
       success_url: `${process.env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.FRONTEND_URL}/cancel`,
@@ -119,20 +126,53 @@ router.post("/create-checkout-session", async (req, res) => {
           "XK",
           "YE","YT",
           "ZA","ZM","ZW",
-          "ZZ"
-        ]
-      }
+          "ZZ",
+        ],
+      },
     });
+
+    // ✅ PostHog: server-truth event
+    try {
+      posthog.capture({
+        distinctId: session.id,
+        event: "stripe_session_created",
+        properties: {
+          stripe_session_id: session.id,
+          items_count: cartItems.reduce((a, i) => a + i.quantity, 0),
+          line_items_count: line_items.length,
+          frontend_url: process.env.FRONTEND_URL,
+        },
+      });
+    } catch (e) {
+      console.warn("PostHog capture failed (stripe_session_created):", e?.message || e);
+    }
 
     console.log("✅ Stripe session created successfully:", session.id);
     res.json({ url: session.url });
-    
   } catch (error) {
     console.error("❌ Error creating checkout session:", error);
     console.error("Error stack:", error.stack);
-    res.status(500).json({ error: "Failed to create checkout session. Please try again." });
+
+    // ✅ PostHog: error event
+    try {
+      posthog.capture({
+        distinctId: "anonymous",
+        event: "stripe_session_create_failed",
+        properties: {
+          error: String(error?.message || error),
+        },
+      });
+    } catch (e) {
+      console.warn("PostHog capture failed (stripe_session_create_failed):", e?.message || e);
+    }
+
+    res
+      .status(500)
+      .json({ error: "Failed to create checkout session. Please try again." });
   } finally {
-    try { await prisma.$disconnect(); } catch {}
+    try {
+      await prisma.$disconnect();
+    } catch {}
   }
 });
 

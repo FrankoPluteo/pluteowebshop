@@ -11,9 +11,12 @@ import Footer from "./pages/Footer";
 import Contact from "./pages/Contact";
 import Aboutus from "./pages/Aboutus";
 
+import { usePostHogPageviews } from "./analytics/UsePostHogPreviews";
+
 function App() {
   return (
     <Router>
+      <Pageviews />
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/products" element={<Products />} />
@@ -28,6 +31,11 @@ function App() {
       <Footer />
     </Router>
   );
+}
+
+function Pageviews() {
+  usePostHogPageviews();
+  return null;
 }
 
 export default App;

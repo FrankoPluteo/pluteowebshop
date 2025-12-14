@@ -4,17 +4,45 @@ import { useLocation, Link } from "react-router-dom";
 import { useCart } from "../context/CartContext";
 import pluteologosuccess from "../../public/pluteoshort.svg"
 
+import posthog from "posthog-js";
+
+
 export default function SuccessPage() {
   const location = useLocation();
   const { clearCart } = useCart();
 
   useEffect(() => {
-  const params = new URLSearchParams(location.search);
-  if (params.get("session_id")) {
-    clearCart(); // clear only once
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []); // <-- empty dependency array
+    const params = new URLSearchParams(location.search);
+    const sessionId = params.get("session_id");
+    if (!sessionId) return;
+
+    clearCart();
+
+    (async () => {
+      try {
+        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+        const res = await fetch(`${API_BASE_URL}/api/orders/${sessionId}`);
+        if (!res.ok) throw new Error(`Order fetch failed: ${res.status}`);
+        const order = await res.json();
+
+        posthog.capture("purchase_completed", {
+          stripe_session_id: sessionId,
+          order_id: order.id,
+          revenue_cents: order.totalAmount,   // your DB stores Stripe amount_total (cents)
+          currency: (order.currency || "eur").toUpperCase(),
+          items_count: Array.isArray(order.items) ? order.items.reduce((a, i) => a + (i.quantity || 0), 0) : null,
+          dropshipper_status: order.dropshipperStatus ?? null,
+        });
+      } catch (e) {
+        posthog.capture("purchase_completed_unverified", {
+          stripe_session_id: sessionId,
+          message: String(e?.message || e),
+        });
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
 
 
   return (

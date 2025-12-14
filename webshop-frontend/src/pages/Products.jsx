@@ -5,6 +5,8 @@ import { Link, useLocation } from "react-router-dom";
 import pluteologo from "../../public/pluteoshort_dark.svg"
 import Navbar from "../components/Navbar";
 
+import posthog from "posthog-js";
+
 export default function Products() {
   const location = useLocation();
   const [products, setProducts] = useState([]);
@@ -180,6 +182,16 @@ export default function Products() {
       setAnimatingProduct(null);
       setCartAnimating(false);
     }, 600);
+
+    posthog.capture("add_to_cart", {
+      product_id: product.id,
+      product_name: product.name,
+      brand: product.brand,
+      price: product.price,
+      salepercentage: product.salepercentage ?? null,
+      source: "products_grid",
+    });
+
   };
 
   const handleTempBrandChange = (e) => {
@@ -316,7 +328,17 @@ export default function Products() {
         <>
           <div className="product-grid">
             {products.length > 0 ? products.map(product => (
-              <Link to={`/product/${product.id}`} className="product-card-link" key={product.id} onClick={saveStateBeforeNavigate}>
+              <Link to={`/product/${product.id}`} className="product-card-link" key={product.id} onClick={() => {
+              saveStateBeforeNavigate();
+              posthog.capture("product_clicked", {
+                product_id: product.id,
+                product_name: product.name,
+                brand: product.brand,
+                price: product.price,
+                salepercentage: product.salepercentage ?? null,
+                source: "products_grid",
+              });
+            }}>
                 <div className="product-card">
                   <div className="product-top">
                     {product.salepercentage && (

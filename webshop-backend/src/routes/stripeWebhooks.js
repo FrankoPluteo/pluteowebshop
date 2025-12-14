@@ -9,6 +9,9 @@ const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
 const axios = require("axios");
 
+// ✅ PostHog (server-side)
+const posthog = require("../posthogClient");
+
 const BIGBUY_USE_SANDBOX = process.env.BIGBUY_USE_SANDBOX === "true";
 const BIGBUY_API_KEY = BIGBUY_USE_SANDBOX
   ? process.env.BIGBUY_API_KEY_SANDBOX
@@ -22,11 +25,33 @@ async function sendOrderToBigBuy(order, bigBuyItems, customerDetails, shippingDe
   try {
     if (!BIGBUY_API_KEY) {
       console.error("BigBuy API key is not configured");
+
+      try {
+        posthog.capture({
+          distinctId: order?.stripeSessionId || String(order?.id || "unknown"),
+          event: "bigbuy_not_configured",
+          properties: {
+            order_id: order?.id,
+            stripe_session_id: order?.stripeSessionId,
+          },
+        });
+      } catch {}
       return;
     }
 
     if (!bigBuyItems || bigBuyItems.length === 0) {
       console.log("No BigBuy items to send for order", order.id);
+
+      try {
+        posthog.capture({
+          distinctId: order?.stripeSessionId || String(order?.id || "unknown"),
+          event: "bigbuy_no_items",
+          properties: {
+            order_id: order?.id,
+            stripe_session_id: order?.stripeSessionId,
+          },
+        });
+      } catch {}
       return;
     }
 
@@ -39,22 +64,20 @@ async function sendOrderToBigBuy(order, bigBuyItems, customerDetails, shippingDe
         internalReference: `ORDER_${order.id}`,
         language: "en",
         paymentMethod: "moneybox", // or your preferred method
-        carriers: [
-          { name: "gls" }, // adjust carrier if needed, must be valid in BigBuy
-        ],
+        carriers: [{ name: "gls" }],
         shippingAddress: {
           firstName,
           lastName,
-          country: shippingDetails.country,        // e.g. "HR"
-          postcode: shippingDetails.postal_code,   // e.g. "10257"
-          town: shippingDetails.city,              // e.g. "Zagreb"
+          country: shippingDetails.country,
+          postcode: shippingDetails.postal_code,
+          town: shippingDetails.city,
           address: shippingDetails.line1 || "",
           phone: customerDetails.phone || "000000000",
           email: customerDetails.email,
           comment: "",
         },
         products: bigBuyItems.map((item) => ({
-          reference: item.bigbuySku, // BigBuy SKU from product.urllink
+          reference: item.bigbuySku,
           quantity: item.quantity,
         })),
       },
@@ -78,10 +101,25 @@ async function sendOrderToBigBuy(order, bigBuyItems, customerDetails, shippingDe
 
     if (checkRes.data.errors && checkRes.data.errors.length > 0) {
       console.error("BigBuy check errors:", checkRes.data.errors);
+
       await prisma.order.update({
         where: { id: order.id },
         data: { dropshipperStatus: "check_failed" },
       });
+
+      // ✅ PostHog
+      try {
+        posthog.capture({
+          distinctId: order?.stripeSessionId || String(order?.id || "unknown"),
+          event: "bigbuy_check_failed",
+          properties: {
+            order_id: order.id,
+            stripe_session_id: order.stripeSessionId,
+            errors: checkRes.data.errors,
+          },
+        });
+      } catch {}
+
       return;
     }
 
@@ -98,12 +136,43 @@ async function sendOrderToBigBuy(order, bigBuyItems, customerDetails, shippingDe
       where: { id: order.id },
       data: { dropshipperStatus: "sent" },
     });
+
+    // ✅ PostHog
+    try {
+      posthog.capture({
+        distinctId: order?.stripeSessionId || String(order?.id || "unknown"),
+        event: "bigbuy_order_sent",
+        properties: {
+          order_id: order.id,
+          stripe_session_id: order.stripeSessionId,
+          bigbuy_response: createRes.data,
+          sandbox: BIGBUY_USE_SANDBOX,
+        },
+      });
+    } catch {}
   } catch (err) {
     console.error("❌ Error sending order to BigBuy:", err.response?.data || err.message);
-    await prisma.order.update({
-      where: { id: order.id },
-      data: { dropshipperStatus: "error" },
-    });
+
+    try {
+      await prisma.order.update({
+        where: { id: order.id },
+        data: { dropshipperStatus: "error" },
+      });
+    } catch {}
+
+    // ✅ PostHog
+    try {
+      posthog.capture({
+        distinctId: order?.stripeSessionId || String(order?.id || "unknown"),
+        event: "bigbuy_order_error",
+        properties: {
+          order_id: order?.id,
+          stripe_session_id: order?.stripeSessionId,
+          error: String(err.response?.data || err.message),
+          sandbox: BIGBUY_USE_SANDBOX,
+        },
+      });
+    } catch {}
   }
 }
 
@@ -122,12 +191,36 @@ router.post(
       console.log("✅ Webhook signature verified");
     } catch (err) {
       console.error("⚠️ Webhook signature verification failed:", err.message);
+
+      // ✅ PostHog
+      try {
+        posthog.capture({
+          distinctId: "anonymous",
+          event: "stripe_webhook_signature_failed",
+          properties: { error: String(err?.message || err) },
+        });
+      } catch {}
+
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
       console.log("✅ Checkout session completed:", session.id);
+
+      // ✅ PostHog: stripe checkout completed (server-truth)
+      try {
+        posthog.capture({
+          distinctId: session.id,
+          event: "stripe_checkout_completed",
+          properties: {
+            stripe_session_id: session.id,
+            amount_total: session.amount_total,
+            currency: session.currency,
+            payment_status: session.payment_status,
+          },
+        });
+      } catch {}
 
       try {
         // Retrieve full session with line items AND price.product (for metadata)
@@ -184,7 +277,6 @@ router.post(
 
         console.log("BigBuy items for this order:", bigBuyItems);
 
-        // 💾 Save order in database
         // 💾 Find or create order in database (idempotent)
         let order = await prisma.order.findUnique({
           where: { stripeSessionId: session.id },
@@ -204,69 +296,100 @@ router.post(
             },
           });
           console.log("💾 Order created in database:", order.id);
+
+          // ✅ PostHog
+          try {
+            posthog.capture({
+              distinctId: session.id,
+              event: "order_created_db",
+              properties: {
+                order_id: order.id,
+                stripe_session_id: session.id,
+                total_amount: session.amount_total,
+                currency: session.currency,
+                items_count: items.reduce((a, i) => a + (i.quantity || 0), 0),
+              },
+            });
+          } catch {}
         } else {
           console.log("ℹ️ Order already exists in database:", order.id);
         }
-
 
         // 🔥 Send order to BigBuy (dropshipping)
         try {
           await sendOrderToBigBuy(order, bigBuyItems, customerDetails, shippingDetails);
         } catch (err) {
           console.error("Error calling sendOrderToBigBuy:", err);
+
+          try {
+            posthog.capture({
+              distinctId: session.id,
+              event: "bigbuy_send_call_error",
+              properties: {
+                order_id: order?.id,
+                stripe_session_id: session.id,
+                error: String(err?.message || err),
+              },
+            });
+          } catch {}
         }
 
         // 📧 Send confirmation email using SendGrid (unchanged)
         const sgMail = require("@sendgrid/mail");
         sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
+        const emailItems = items
+          .map((i) => `• ${i.name} x${i.quantity} (€${i.price})`)
+          .join("\n");
+
         const msg = {
           to: customerDetails.email,
-          from: process.env.FROM_EMAIL,
-          subject: "Your Pluteo Order Confirmation",
-          html: `
-            <h2>Thank you for your order, ${customerDetails.name || "Customer"}!</h2>
-            <p>We received your payment of <strong>${session.amount_total / 100} ${session.currency.toUpperCase()}</strong>.</p>
-
-            <h3>Order summary:</h3>
-            <ul>
-              ${items
-                .map(
-                  (item) =>
-                    `<li>${item.quantity}x ${item.name} - €${item.price.toFixed(2)}</li>`
-                )
-                .join("")}
-            </ul>
-
-            <h3>Shipping address:</h3>
-            <p>
-              ${shippingDetails.line1 || ""}<br>
-              ${shippingDetails.city || ""}, ${shippingDetails.postal_code || ""}<br>
-              ${shippingDetails.country || ""}
-            </p>
-
-            <p>You will receive another email once your order is shipped.</p>
-          `,
+          from: process.env.SENDGRID_FROM_EMAIL,
+          subject: "Order Confirmation",
+          text: `Thanks for your order!\n\nItems:\n${emailItems}\n\nTotal: €${
+            session.amount_total / 100
+          }\n\nWe will notify you when it ships.`,
         };
 
         try {
           await sgMail.send(msg);
-          console.log("📧 Confirmation email sent via SendGrid!");
-        } catch (error) {
-          console.error("❌ SendGrid error:", error);
-          if (error.response) {
-            console.error(error.response.body);
-          }
+          console.log("📧 Confirmation email sent to:", customerDetails.email);
+
+          try {
+            posthog.capture({
+              distinctId: session.id,
+              event: "order_email_sent",
+              properties: { stripe_session_id: session.id, to: customerDetails.email },
+            });
+          } catch {}
+        } catch (err) {
+          console.error("❌ Error sending email:", err.message);
+
+          try {
+            posthog.capture({
+              distinctId: session.id,
+              event: "order_email_failed",
+              properties: {
+                stripe_session_id: session.id,
+                error: String(err?.message || err),
+              },
+            });
+          } catch {}
         }
       } catch (err) {
         console.error("❌ Error processing checkout.session.completed:", err);
-        return res.status(500).send("Internal Server Error");
+
+        try {
+          posthog.capture({
+            distinctId: session?.id || "unknown",
+            event: "stripe_webhook_processing_failed",
+            properties: { error: String(err?.message || err) },
+          });
+        } catch {}
       }
-    } else {
-      console.log("ℹ️ Webhook event ignored:", event.type);
     }
 
-    res.json({ received: true });
+    res.status(200).json({ received: true });
   }
 );
 
