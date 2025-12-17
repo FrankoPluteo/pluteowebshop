@@ -126,6 +126,8 @@ async function sendOrderToBigBuy(order, bigBuyItems, customerDetails, shippingDe
       },
     });
 
+    console.error("❌ Webhook processing failed:", err);
+
     return { success: false, error: err };
   }
 }
@@ -152,6 +154,9 @@ router.post(
         properties: { error: err.message },
       });
       return res.status(400).send(`Webhook Error: ${err.message}`);
+
+      console.error("❌ Webhook processing failed:", err);
+
     }
 
     if (event.type !== "checkout.session.completed") {
