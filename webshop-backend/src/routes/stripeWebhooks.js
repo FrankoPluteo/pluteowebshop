@@ -260,7 +260,8 @@ router.post(
         properties: { error: String(err.message || err) },
       });
 
-      return res.status(500).send("Webhook error");
+      console.error("Webhook processing error:", err);
+      return res.status(200).json({ received: true });
     }
   }
 );
