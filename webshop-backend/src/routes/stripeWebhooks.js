@@ -156,7 +156,6 @@ router.post(
       return res.status(400).send(`Webhook Error: ${err.message}`);
 
       console.error("❌ Webhook processing failed:", err);
-
     }
 
     if (event.type !== "checkout.session.completed") {
@@ -197,6 +196,14 @@ router.post(
       });
 
       if (!order) {
+
+        const items =
+          fullSession?.line_items?.data?.map((li) => ({
+            name: li.description,
+            quantity: li.quantity,
+            price: (li.amount_total ?? 0) / 100,
+          })) || [];
+
         order = await prisma.order.create({
           data: {
             stripeSessionId: session.id,
@@ -207,6 +214,7 @@ router.post(
             currency: session.currency,
             paymentStatus: session.payment_status,
             dropshipperStatus: "pending",
+            items,
           },
         });
 
