@@ -3,7 +3,7 @@ const express = require("express");
 const router = express.Router();
 const Stripe = require("stripe");
 const { PrismaClient } = require("@prisma/client");
-import axios from "axios";
+const axios = require("axios");
 
 const prisma = new PrismaClient();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
