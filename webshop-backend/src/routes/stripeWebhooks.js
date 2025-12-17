@@ -41,27 +41,37 @@ async function sendOrderToBigBuy(order, bigBuyItems, customerDetails, shippingDe
     const [firstName, ...rest] = fullName.split(" ");
     const lastName = rest.join(" ") || firstName;
 
-    const payload = {
-      order: {
-        internalReference: `ORDER_${order.id}`,
-        language: "en",
-        paymentMethod: "moneybox",
-        shippingAddress: {
-          firstName,
-          lastName,
-          country: shippingDetails.country,
-          postcode: shippingDetails.postal_code,
-          town: shippingDetails.city,
-          address: shippingDetails.line1 || "",
-          phone: customerDetails.phone || "000000000",
-          email: customerDetails.email,
-        },
-        products: bigBuyItems.map((i) => ({
-          reference: i.bigbuySku,
-          quantity: i.quantity,
-        })),
+    const preferredCarriers = [
+    "gls",
+    "dpd",
+    "dhl",
+    "ups",
+    "fedex",
+  ];
+
+  const payload = {
+    order: {
+      internalReference: `ORDER_${order.id}`,
+      language: "en",
+      paymentMethod: "moneybox",
+      carriers: preferredCarriers.map((name) => ({ name })),
+      shippingAddress: {
+        firstName,
+        lastName,
+        country: shippingDetails.country,
+        postcode: shippingDetails.postal_code,
+        town: shippingDetails.city,
+        address: shippingDetails.line1 || "",
+        phone: customerDetails.phone || "000000000",
+        email: customerDetails.email,
+        comment: "",
       },
-    };
+      products: bigBuyItems.map((i) => ({
+        reference: i.bigbuySku,
+        quantity: i.quantity,
+      })),
+    },
+  };
 
     const headers = {
       Authorization: `Bearer ${BIGBUY_API_KEY}`,
