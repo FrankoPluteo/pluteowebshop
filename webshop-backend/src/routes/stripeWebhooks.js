@@ -126,6 +126,8 @@ async function sendOrderToBigBuy(order, bigBuyItems, customerDetails, shippingDe
       },
     });
 
+    console.error("BigBuy error body:", err.response?.data);
+
     console.error("❌ Webhook processing failed:", err);
 
     return { success: false, error: err };
