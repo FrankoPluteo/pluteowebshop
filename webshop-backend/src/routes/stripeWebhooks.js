@@ -315,6 +315,7 @@ router.post(
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
       console.log("✅ Checkout session completed:", session.id);
+      console.log("Payment status:", session.payment_status);
 
       // ✅ PostHog: stripe checkout completed (server-truth)
       try {
@@ -333,7 +334,13 @@ router.post(
       try {
         // Retrieve full session with line items AND price.product (for metadata)
         const fullSession = await stripe.checkout.sessions.retrieve(session.id, {
-          expand: ["line_items", "line_items.data.price.product"],
+          expand: ["line_items", "line_items.data.price.product", "payment_intent"],
+        });
+
+        console.log("Payment Intent details:", {
+          id: fullSession.payment_intent?.id,
+          status: fullSession.payment_intent?.status,
+          capture_method: fullSession.payment_intent?.capture_method,
         });
 
         const customerDetails = session.customer_details || {};
@@ -426,7 +433,9 @@ router.post(
         // 🔥 STEP 1: Send order to BigBuy FIRST (charges BigBuy wallet)
         let bigbuyResult;
         try {
+          console.log("🚀 Attempting to send order to BigBuy...");
           bigbuyResult = await sendOrderToBigBuy(order, bigBuyItems, customerDetails, shippingDetails);
+          console.log("BigBuy result:", bigbuyResult);
         } catch (err) {
           console.error("Error calling sendOrderToBigBuy:", err);
           bigbuyResult = { success: false, error: err.message };
@@ -444,20 +453,29 @@ router.post(
           } catch {}
         }
 
-        // 🔥 STEP 2: If BigBuy order failed, cancel the payment authorization
+        // Get payment intent details
+        const paymentIntentId = fullSession.payment_intent?.id || session.payment_intent;
+        let paymentIntent = fullSession.payment_intent;
+        
+        // If payment intent wasn't expanded, retrieve it
+        if (typeof paymentIntent === 'string' || !paymentIntent?.status) {
+          console.log("Retrieving payment intent separately...");
+          paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+        }
+
+        console.log("Payment Intent Status:", paymentIntent?.status);
+        console.log("Payment Intent Capture Method:", paymentIntent?.capture_method);
+
+        // 🔥 STEP 2: If BigBuy order failed, handle payment appropriately
         if (!bigbuyResult.success) {
-          console.error("❌ BigBuy order failed, canceling Stripe payment authorization");
+          console.error("❌ BigBuy order failed, handling payment...");
 
           try {
-            const paymentIntentId = session.payment_intent;
-            if (paymentIntentId) {
-              // Retrieve the payment intent to check its status
-              const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
-              
+            if (paymentIntentId && paymentIntent) {
               console.log(`Payment Intent status: ${paymentIntent.status}`);
 
               if (paymentIntent.status === "requires_capture") {
-                // Cancel the payment authorization
+                // Payment is authorized but not captured - cancel it
                 await stripe.paymentIntents.cancel(paymentIntentId);
 
                 await prisma.order.update({
@@ -497,10 +515,10 @@ router.post(
                 await sgMail.send(failMsg);
                 console.log("📧 Cancellation notification sent");
               } else if (paymentIntent.status === "succeeded") {
-                // Payment was already captured - issue a refund instead
+                // Payment was already captured - issue a refund
                 console.log("⚠️ Payment already captured, issuing refund instead");
 
-                await stripe.refunds.create({
+                const refund = await stripe.refunds.create({
                   payment_intent: paymentIntentId,
                   reason: "requested_by_customer",
                 });
@@ -509,11 +527,12 @@ router.post(
                   where: { id: order.id },
                   data: { 
                     paymentStatus: "refunded",
-                    dropshipperStatus: "failed"
+                    dropshipperStatus: "failed",
+                    stripeRefundId: refund.id,
                   },
                 });
 
-                console.log("✅ Stripe payment refunded");
+                console.log("✅ Stripe payment refunded:", refund.id);
 
                 try {
                   posthog.capture({
@@ -522,6 +541,7 @@ router.post(
                     properties: {
                       order_id: order.id,
                       stripe_session_id: session.id,
+                      refund_id: refund.id,
                       reason: "bigbuy_order_failed_after_capture",
                       bigbuy_error: bigbuyResult.error,
                     },
@@ -536,7 +556,7 @@ router.post(
                   to: customerDetails.email,
                   from: process.env.SENDGRID_FROM_EMAIL,
                   subject: "Order Could Not Be Processed - Refund Issued",
-                  text: `We're sorry, but we couldn't process your order due to availability issues.\n\nYour payment has been refunded and should appear in your account within 5-10 business days.\n\nOrder ID: ${order.id}\nRefund Amount: €${session.amount_total / 100}\n\nIf you have any questions, please contact our support team.`,
+                  text: `We're sorry, but we couldn't process your order due to availability issues.\n\nYour payment of €${session.amount_total / 100} has been refunded and should appear in your account within 5-10 business days.\n\nOrder ID: ${order.id}\nRefund ID: ${refund.id}\n\nIf you have any questions, please contact our support team.`,
                 };
 
                 await sgMail.send(refundMsg);
@@ -553,52 +573,79 @@ router.post(
                 });
               }
             }
-          } catch (cancelErr) {
-            console.error("❌ Error handling payment cancellation/refund:", cancelErr.message);
+          } catch (handleErr) {
+            console.error("❌ Error handling payment after BigBuy failure:", handleErr.message);
 
             try {
               posthog.capture({
                 distinctId: session.id,
-                event: "stripe_cancel_refund_failed",
+                event: "stripe_payment_handling_failed",
                 properties: {
                   order_id: order.id,
                   stripe_session_id: session.id,
-                  error: String(cancelErr?.message || cancelErr),
+                  error: String(handleErr?.message || handleErr),
                 },
               });
             } catch {}
           }
 
-          // Return early - don't send success email or capture payment
+          // Return early - don't send success email or try to capture payment
           return res.status(200).json({ received: true });
         }
 
-        // 🔥 STEP 3: BigBuy succeeded, now CAPTURE the Stripe payment
+        // 🔥 STEP 3: BigBuy succeeded, ensure payment is captured
         try {
-          const paymentIntentId = session.payment_intent;
-          if (paymentIntentId) {
-            console.log("💰 Capturing Stripe payment...");
-            
-            await stripe.paymentIntents.capture(paymentIntentId);
+          if (paymentIntentId && paymentIntent) {
+            if (paymentIntent.status === "requires_capture") {
+              console.log("💰 Capturing Stripe payment...");
+              
+              await stripe.paymentIntents.capture(paymentIntentId);
 
-            await prisma.order.update({
-              where: { id: order.id },
-              data: { paymentStatus: "paid" },
-            });
-
-            console.log("✅ Stripe payment captured successfully");
-
-            try {
-              posthog.capture({
-                distinctId: session.id,
-                event: "stripe_payment_captured",
-                properties: {
-                  order_id: order.id,
-                  stripe_session_id: session.id,
-                  amount: session.amount_total,
-                },
+              await prisma.order.update({
+                where: { id: order.id },
+                data: { paymentStatus: "paid" },
               });
-            } catch {}
+
+              console.log("✅ Stripe payment captured successfully");
+
+              try {
+                posthog.capture({
+                  distinctId: session.id,
+                  event: "stripe_payment_captured",
+                  properties: {
+                    order_id: order.id,
+                    stripe_session_id: session.id,
+                    amount: session.amount_total,
+                  },
+                });
+              } catch {}
+            } else if (paymentIntent.status === "succeeded") {
+              console.log("✅ Payment already captured automatically");
+              
+              await prisma.order.update({
+                where: { id: order.id },
+                data: { paymentStatus: "paid" },
+              });
+
+              try {
+                posthog.capture({
+                  distinctId: session.id,
+                  event: "stripe_payment_already_captured",
+                  properties: {
+                    order_id: order.id,
+                    stripe_session_id: session.id,
+                    amount: session.amount_total,
+                  },
+                });
+              } catch {}
+            } else {
+              console.warn(`⚠️ Unexpected payment status after BigBuy success: ${paymentIntent.status}`);
+              
+              await prisma.order.update({
+                where: { id: order.id },
+                data: { paymentStatus: `uncertain_${paymentIntent.status}` },
+              });
+            }
           }
         } catch (captureErr) {
           console.error("❌ Error capturing payment:", captureErr.message);
@@ -619,9 +666,6 @@ router.post(
               },
             });
           } catch {}
-
-          // Still return success to Stripe webhook
-          return res.status(200).json({ received: true });
         }
 
         // 📧 Send confirmation email using SendGrid
