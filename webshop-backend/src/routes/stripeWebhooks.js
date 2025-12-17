@@ -4,6 +4,7 @@ const router = express.Router();
 const Stripe = require("stripe");
 const { PrismaClient } = require("@prisma/client");
 const axios = require("axios");
+import axios from "axios";
 
 const prisma = new PrismaClient();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -26,121 +27,126 @@ const BIGBUY_BASE_URL = BIGBUY_USE_SANDBOX
  * Send order to BigBuy
  * Returns: { success: boolean, error?: any }
  */
-async function sendOrderToBigBuy(order, bigBuyItems, customerDetails, shippingDetails) {
-  try {
-    if (!bigBuyItems || bigBuyItems.length === 0) {
-      posthog.capture({
-        distinctId: order.stripeSessionId,
-        event: "bigbuy_no_items",
-        properties: { order_id: order.id },
-      });
-      return { success: false, error: "NO_ITEMS" };
-    }
+export async function sendOrderToBigBuy({
+  orderId,
+  customer,
+  shipping,
+  items,
+}) {
+  const BIGBUY_BASE = "https://api.bigbuy.eu/rest";
+  const BIGBUY_TOKEN = process.env.BIGBUY_API_KEY;
 
-    const fullName = customerDetails.name || "Customer";
-    const [firstName, ...rest] = fullName.split(" ");
-    const lastName = rest.join(" ") || firstName;
+  const headers = {
+    Authorization: `Bearer ${BIGBUY_TOKEN}`,
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
 
-    const preferredCarriers = [
-    "gls",
-    "dpd",
-    "dhl",
-    "ups",
-    "fedex",
-  ];
-
-  const payload = {
+  /* ----------------------------------------
+   * STEP 1 — CHECK SHIPPING OPTIONS
+   * -------------------------------------- */
+  const checkPayload = {
     order: {
-      internalReference: `ORDER_${order.id}`,
+      internalReference: `ORDER_${orderId}`,
       language: "en",
       paymentMethod: "moneybox",
-      carriers: preferredCarriers.map((name) => ({ name })),
       shippingAddress: {
-        firstName,
-        lastName,
-        country: shippingDetails.country,
-        postcode: shippingDetails.postal_code,
-        town: shippingDetails.city,
-        address: shippingDetails.line1 || "",
-        phone: customerDetails.phone || "000000000",
-        email: customerDetails.email,
-        comment: "",
+        firstName: customer.firstName,
+        lastName: customer.lastName,
+        country: shipping.country,
+        postcode: shipping.postcode,
+        town: shipping.city,
+        address: shipping.address,
+        phone: shipping.phone || "000000000",
+        email: customer.email,
       },
-      products: bigBuyItems.map((i) => ({
+      products: items.map((i) => ({
         reference: i.bigbuySku,
         quantity: i.quantity,
       })),
     },
   };
 
-    const headers = {
-      Authorization: `Bearer ${BIGBUY_API_KEY}`,
-      "Content-Type": "application/json",
-    };
-
-    // 1️⃣ CHECK
-    const checkRes = await axios.post(
-      `${BIGBUY_BASE_URL}/rest/order/check/multishipping.json`,
-      payload,
+  let checkResponse;
+  try {
+    checkResponse = await axios.post(
+      `${BIGBUY_BASE}/order/check/multishipping.json`,
+      checkPayload,
       { headers }
     );
-
-    if (checkRes.data?.errors?.length) {
-      posthog.capture({
-        distinctId: order.stripeSessionId,
-        event: "bigbuy_check_failed",
-        properties: {
-          order_id: order.id,
-          errors: checkRes.data.errors,
-        },
-      });
-      return { success: false, error: checkRes.data.errors };
-    }
-
-    // 2️⃣ CREATE
-    const createRes = await axios.post(
-      `${BIGBUY_BASE_URL}/rest/order/create/multishipping.json`,
-      payload,
-      { headers }
-    );
-
-    if (createRes.data?.errors?.length) {
-      posthog.capture({
-        distinctId: order.stripeSessionId,
-        event: "bigbuy_create_failed",
-        properties: {
-          order_id: order.id,
-          errors: createRes.data.errors,
-        },
-      });
-      return { success: false, error: createRes.data.errors };
-    }
-
-    posthog.capture({
-      distinctId: order.stripeSessionId,
-      event: "bigbuy_order_sent",
-      properties: {
-        order_id: order.id,
-        sandbox: BIGBUY_USE_SANDBOX,
-      },
-    });
-
-    return { success: true };
   } catch (err) {
-    posthog.capture({
-      distinctId: order.stripeSessionId,
-      event: "bigbuy_exception",
-      properties: {
-        order_id: order.id,
-        error: String(err.response?.data || err.message),
+    console.error(
+      "❌ BigBuy CHECK failed:",
+      err.response?.data || err.message
+    );
+    throw new Error("BigBuy shipping check failed");
+  }
+
+  const shippingOptions =
+    checkResponse.data?.orders?.[0]?.shippingOptions;
+
+  if (!shippingOptions || shippingOptions.length === 0) {
+    console.error("❌ No shipping options returned by BigBuy");
+    throw new Error("No shipping options available");
+  }
+
+  // Prefer "Standard shipping" if present, otherwise first option
+  const selectedCarrier =
+    shippingOptions.find((o) =>
+      o.name?.toLowerCase().includes("standard")
+    ) || shippingOptions[0];
+
+  if (!selectedCarrier?.id) {
+    console.error("❌ Invalid carrier returned:", selectedCarrier);
+    throw new Error("Invalid carrier selection");
+  }
+
+  /* ----------------------------------------
+   * STEP 2 — CREATE ORDER
+   * -------------------------------------- */
+  const createPayload = {
+    order: {
+      internalReference: `ORDER_${orderId}`,
+      language: "en",
+      paymentMethod: "moneybox",
+      carrier: { id: selectedCarrier.id },
+      shippingAddress: {
+        firstName: customer.firstName,
+        lastName: customer.lastName,
+        country: shipping.country,
+        postcode: shipping.postcode,
+        town: shipping.city,
+        address: shipping.address,
+        phone: shipping.phone || "000000000",
+        email: customer.email,
+        comment: "",
       },
-    });
+      products: items.map((i) => ({
+        reference: i.bigbuySku,
+        quantity: i.quantity,
+      })),
+    },
+  };
 
-    console.error("BigBuy error body:", err.response?.data);
+  try {
+    const createResponse = await axios.post(
+      `${BIGBUY_BASE}/order/create.json`,
+      createPayload,
+      { headers }
+    );
 
-    console.error("❌ Webhook processing failed:", err);
+    console.log(
+      "✅ BigBuy order created:",
+      createResponse.data?.orders?.[0]?.reference
+    );
 
-    return { success: false, error: err };
+    return createResponse.data;
+  } catch (err) {
+    console.error(
+      "❌ BigBuy CREATE failed:",
+      err.response?.data || err.message
+    );
+    throw new Error("BigBuy order creation failed");
   }
 }
 
