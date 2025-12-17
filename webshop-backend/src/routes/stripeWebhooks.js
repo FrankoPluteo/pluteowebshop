@@ -31,6 +31,7 @@ async function getAvailableCarriers(bigbuySku, country, postalCode) {
       "Content-Type": "application/json",
     };
 
+    // First, try to get carriers for the specific product
     const response = await axios.get(
       `${BIGBUY_BASE_URL}/rest/shipping/carriers.json`,
       {
@@ -42,8 +43,33 @@ async function getAvailableCarriers(bigbuySku, country, postalCode) {
       }
     );
 
-    console.log(`Available carriers for ${bigbuySku}:`, response.data);
-    return response.data;
+    console.log(`Available carriers for destination ${country}:`, JSON.stringify(response.data, null, 2));
+    
+    // Filter out carriers that exclude this product
+    const availableCarriers = response.data.filter(carrier => {
+      // Check if product is excluded
+      if (carrier.excludedProductReferences && carrier.excludedProductReferences.includes(bigbuySku)) {
+        console.log(`Carrier ${carrier.name} excludes product ${bigbuySku}`);
+        return false;
+      }
+      
+      // Check if carrier ships to this country
+      if (carrier.shippingCountries) {
+        const shipsToCountry = carrier.shippingCountries.some(
+          c => c.isoCode === country || c.iso === country
+        );
+        if (!shipsToCountry) {
+          console.log(`Carrier ${carrier.name} does not ship to ${country}`);
+          return false;
+        }
+      }
+      
+      return true;
+    });
+
+    console.log(`Filtered available carriers:`, availableCarriers.map(c => c.name));
+    
+    return availableCarriers;
   } catch (err) {
     console.error("Error fetching carriers:", err.response?.data || err.message);
     return [];
@@ -51,25 +77,38 @@ async function getAvailableCarriers(bigbuySku, country, postalCode) {
 }
 
 /**
- * Select the best available carrier (prioritize: gls > standard > first available)
+ * Select the best available carrier (prioritize: gls > standard shipment > postal service > first available)
  */
 function selectBestCarrier(carriers) {
   if (!carriers || carriers.length === 0) {
-    return "gls"; // fallback default
+    console.warn("No carriers available, falling back to 'standard shipment'");
+    return "standard shipment"; // fallback default
   }
 
-  // Priority order
-  const priority = ["gls", "standard", "express"];
+  // Priority order (lowercase for BigBuy API)
+  const priority = [
+    "gls",
+    "standard shipment", 
+    "postal service",
+    "ups",
+    "dhl",
+    "express"
+  ];
   
   for (const preferred of priority) {
     const found = carriers.find(
-      (c) => c.name.toLowerCase().includes(preferred)
+      (c) => c.name.toLowerCase() === preferred
     );
-    if (found) return found.name;
+    if (found) {
+      console.log(`Selected carrier: ${found.name}`);
+      // Return lowercase carrier name for BigBuy API
+      return found.name.toLowerCase();
+    }
   }
 
-  // Return first available
-  return carriers[0].name;
+  // If no priority match, return first available (lowercase)
+  console.log(`No priority carrier found, using first available: ${carriers[0].name}`);
+  return carriers[0].name.toLowerCase();
 }
 
 async function sendOrderToBigBuy(order, bigBuyItems, customerDetails, shippingDetails) {
@@ -412,53 +451,115 @@ router.post(
           try {
             const paymentIntentId = session.payment_intent;
             if (paymentIntentId) {
-              // Cancel the payment authorization instead of refunding
-              await stripe.paymentIntents.cancel(paymentIntentId);
+              // Retrieve the payment intent to check its status
+              const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+              
+              console.log(`Payment Intent status: ${paymentIntent.status}`);
 
-              await prisma.order.update({
-                where: { id: order.id },
-                data: { 
-                  paymentStatus: "canceled",
-                  dropshipperStatus: "failed"
-                },
-              });
+              if (paymentIntent.status === "requires_capture") {
+                // Cancel the payment authorization
+                await stripe.paymentIntents.cancel(paymentIntentId);
 
-              console.log("✅ Stripe payment authorization canceled");
-
-              try {
-                posthog.capture({
-                  distinctId: session.id,
-                  event: "stripe_payment_canceled",
-                  properties: {
-                    order_id: order.id,
-                    stripe_session_id: session.id,
-                    reason: "bigbuy_order_failed",
-                    bigbuy_error: bigbuyResult.error,
+                await prisma.order.update({
+                  where: { id: order.id },
+                  data: { 
+                    paymentStatus: "canceled",
+                    dropshipperStatus: "failed"
                   },
                 });
-              } catch {}
 
-              // Send failure email
-              const sgMail = require("@sendgrid/mail");
-              sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+                console.log("✅ Stripe payment authorization canceled");
 
-              const failMsg = {
-                to: customerDetails.email,
-                from: process.env.SENDGRID_FROM_EMAIL,
-                subject: "Order Could Not Be Processed",
-                text: `We're sorry, but we couldn't process your order due to availability issues.\n\nYour payment authorization has been canceled and no charge has been made to your card.\n\nOrder ID: ${order.id}\nAmount: €${session.amount_total / 100}\n\nIf you have any questions, please contact our support team.`,
-              };
+                try {
+                  posthog.capture({
+                    distinctId: session.id,
+                    event: "stripe_payment_canceled",
+                    properties: {
+                      order_id: order.id,
+                      stripe_session_id: session.id,
+                      reason: "bigbuy_order_failed",
+                      bigbuy_error: bigbuyResult.error,
+                    },
+                  });
+                } catch {}
 
-              await sgMail.send(failMsg);
-              console.log("📧 Cancellation notification sent");
+                // Send failure email
+                const sgMail = require("@sendgrid/mail");
+                sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+
+                const failMsg = {
+                  to: customerDetails.email,
+                  from: process.env.SENDGRID_FROM_EMAIL,
+                  subject: "Order Could Not Be Processed",
+                  text: `We're sorry, but we couldn't process your order due to availability issues.\n\nYour payment authorization has been canceled and no charge has been made to your card.\n\nOrder ID: ${order.id}\nAmount: €${session.amount_total / 100}\n\nIf you have any questions, please contact our support team.`,
+                };
+
+                await sgMail.send(failMsg);
+                console.log("📧 Cancellation notification sent");
+              } else if (paymentIntent.status === "succeeded") {
+                // Payment was already captured - issue a refund instead
+                console.log("⚠️ Payment already captured, issuing refund instead");
+
+                await stripe.refunds.create({
+                  payment_intent: paymentIntentId,
+                  reason: "requested_by_customer",
+                });
+
+                await prisma.order.update({
+                  where: { id: order.id },
+                  data: { 
+                    paymentStatus: "refunded",
+                    dropshipperStatus: "failed"
+                  },
+                });
+
+                console.log("✅ Stripe payment refunded");
+
+                try {
+                  posthog.capture({
+                    distinctId: session.id,
+                    event: "stripe_refund_issued",
+                    properties: {
+                      order_id: order.id,
+                      stripe_session_id: session.id,
+                      reason: "bigbuy_order_failed_after_capture",
+                      bigbuy_error: bigbuyResult.error,
+                    },
+                  });
+                } catch {}
+
+                // Send refund email
+                const sgMail = require("@sendgrid/mail");
+                sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+
+                const refundMsg = {
+                  to: customerDetails.email,
+                  from: process.env.SENDGRID_FROM_EMAIL,
+                  subject: "Order Could Not Be Processed - Refund Issued",
+                  text: `We're sorry, but we couldn't process your order due to availability issues.\n\nYour payment has been refunded and should appear in your account within 5-10 business days.\n\nOrder ID: ${order.id}\nRefund Amount: €${session.amount_total / 100}\n\nIf you have any questions, please contact our support team.`,
+                };
+
+                await sgMail.send(refundMsg);
+                console.log("📧 Refund notification sent");
+              } else {
+                console.log(`⚠️ Unexpected payment status: ${paymentIntent.status}`);
+                
+                await prisma.order.update({
+                  where: { id: order.id },
+                  data: { 
+                    paymentStatus: `failed_${paymentIntent.status}`,
+                    dropshipperStatus: "failed"
+                  },
+                });
+              }
             }
           } catch (cancelErr) {
-            console.error("❌ Error canceling payment authorization:", cancelErr.message);
+            console.error("❌ Error handling payment cancellation/refund:", cancelErr.message);
 
             try {
               posthog.capture({
                 distinctId: session.id,
-                event: "stripe_cancel_failed",
+                event: "stripe_cancel_refund_failed",
                 properties: {
                   order_id: order.id,
                   stripe_session_id: session.id,
