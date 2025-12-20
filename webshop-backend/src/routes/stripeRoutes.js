@@ -1,10 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const Stripe = require("stripe");
-const https = require("https");
 
-// ✅ FIX: Disable SSL verification for development
-// NOTE: Remove this in production and fix the root certificate issue!
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
 const { PrismaClient } = require("@prisma/client");
@@ -70,7 +67,6 @@ router.post("/create-checkout-session", async (req, res) => {
         });
       }
 
-      // src/routes/stripeRoutes.js
       line_items.push({
         price_data: {
           currency: "eur",
@@ -91,10 +87,20 @@ router.post("/create-checkout-session", async (req, res) => {
       JSON.stringify(line_items, null, 2)
     );
 
+    // 🔥 CRITICAL FIX: Enable manual capture
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "payment",
       line_items,
+      
+      // 🔥 THIS IS THE KEY CHANGE - MANUAL CAPTURE
+      payment_intent_data: {
+        capture_method: "manual",
+        metadata: {
+          created_by: "webshop_checkout",
+        },
+      },
+
       success_url: `${process.env.FRONTEND_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.FRONTEND_URL}/cancel`,
 
@@ -141,6 +147,7 @@ router.post("/create-checkout-session", async (req, res) => {
           items_count: cartItems.reduce((a, i) => a + i.quantity, 0),
           line_items_count: line_items.length,
           frontend_url: process.env.FRONTEND_URL,
+          capture_method: "manual",
         },
       });
     } catch (e) {
@@ -148,6 +155,7 @@ router.post("/create-checkout-session", async (req, res) => {
     }
 
     console.log("✅ Stripe session created successfully:", session.id);
+    console.log("💡 Payment will be AUTHORIZED but not captured until BigBuy confirms");
     res.json({ url: session.url });
   } catch (error) {
     console.error("❌ Error creating checkout session:", error);

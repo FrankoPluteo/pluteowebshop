@@ -31,7 +31,6 @@ async function getAvailableCarriers(bigbuySku, country, postalCode) {
       "Content-Type": "application/json",
     };
 
-    // First, try to get carriers for the specific product
     const response = await axios.get(
       `${BIGBUY_BASE_URL}/rest/shipping/carriers.json`,
       {
@@ -82,10 +81,9 @@ async function getAvailableCarriers(bigbuySku, country, postalCode) {
 function selectBestCarrier(carriers) {
   if (!carriers || carriers.length === 0) {
     console.warn("No carriers available, falling back to 'standard shipment'");
-    return "standard shipment"; // fallback default
+    return "standard shipment";
   }
 
-  // Priority order (lowercase for BigBuy API)
   const priority = [
     "gls",
     "standard shipment", 
@@ -101,18 +99,46 @@ function selectBestCarrier(carriers) {
     );
     if (found) {
       console.log(`Selected carrier: ${found.name}`);
-      // Return lowercase carrier name for BigBuy API
       return found.name.toLowerCase();
     }
   }
 
-  // If no priority match, return first available (lowercase)
   console.log(`No priority carrier found, using first available: ${carriers[0].name}`);
   return carriers[0].name.toLowerCase();
 }
 
+/**
+ * Send order to BigBuy (this does NOT charge Stripe - that happens after)
+ */
 async function sendOrderToBigBuy(order, bigBuyItems, customerDetails, shippingDetails) {
   try {
+    // 🔥 SANDBOX BYPASS: If sandbox is broken, simulate success for testing
+    if (BIGBUY_USE_SANDBOX && process.env.BIGBUY_SANDBOX_BYPASS === "true") {
+      console.log("⚠️ SANDBOX BYPASS ENABLED - Simulating successful BigBuy order");
+      
+      await prisma.order.update({
+        where: { id: order.id },
+        data: { 
+          dropshipperStatus: "sent_simulated",
+          bigbuyOrderId: `MOCK_${order.id}_${Date.now()}`
+        },
+      });
+
+      try {
+        posthog.capture({
+          distinctId: order?.stripeSessionId || String(order?.id || "unknown"),
+          event: "bigbuy_order_simulated",
+          properties: {
+            order_id: order.id,
+            stripe_session_id: order.stripeSessionId,
+            note: "Sandbox bypass - BigBuy sandbox non-functional",
+          },
+        });
+      } catch {}
+
+      return { success: true, bigbuyOrderId: `MOCK_${order.id}` };
+    }
+
     if (!BIGBUY_API_KEY) {
       console.error("BigBuy API key is not configured");
 
@@ -159,6 +185,23 @@ async function sendOrderToBigBuy(order, bigBuyItems, customerDetails, shippingDe
     const selectedCarrier = selectBestCarrier(carriers);
     console.log(`Selected carrier: ${selectedCarrier}`);
 
+    // Format phone number properly (BigBuy might require international format)
+    let phone = customerDetails.phone || "+385912345678"; // Default Croatian number
+    if (phone && !phone.startsWith("+")) {
+      // Add country code if missing
+      const countryPhonePrefixes = {
+        HR: "+385",
+        ES: "+34",
+        DE: "+49",
+        FR: "+33",
+        IT: "+39",
+        GB: "+44",
+        US: "+1",
+      };
+      const prefix = countryPhonePrefixes[shippingDetails.country] || "+385";
+      phone = prefix + phone.replace(/^0+/, ""); // Remove leading zeros
+    }
+
     const payload = {
       order: {
         internalReference: `ORDER_${order.id}`,
@@ -172,7 +215,7 @@ async function sendOrderToBigBuy(order, bigBuyItems, customerDetails, shippingDe
           postcode: shippingDetails.postal_code,
           town: shippingDetails.city,
           address: shippingDetails.line1 || "",
-          phone: customerDetails.phone || "000000000",
+          phone: phone,
           email: customerDetails.email,
           comment: "",
         },
@@ -190,7 +233,7 @@ async function sendOrderToBigBuy(order, bigBuyItems, customerDetails, shippingDe
 
     console.log("Sending BigBuy CHECK payload:", JSON.stringify(payload, null, 2));
 
-    // 1) Check order
+    // 1) Check order first
     const checkRes = await axios.post(
       `${BIGBUY_BASE_URL}/rest/order/check/multishipping.json`,
       payload,
@@ -207,7 +250,6 @@ async function sendOrderToBigBuy(order, bigBuyItems, customerDetails, shippingDe
         data: { dropshipperStatus: "check_failed" },
       });
 
-      // ✅ PostHog
       try {
         posthog.capture({
           distinctId: order?.stripeSessionId || String(order?.id || "unknown"),
@@ -240,7 +282,6 @@ async function sendOrderToBigBuy(order, bigBuyItems, customerDetails, shippingDe
       },
     });
 
-    // ✅ PostHog
     try {
       posthog.capture({
         distinctId: order?.stripeSessionId || String(order?.id || "unknown"),
@@ -266,7 +307,6 @@ async function sendOrderToBigBuy(order, bigBuyItems, customerDetails, shippingDe
       });
     } catch {}
 
-    // ✅ PostHog
     try {
       posthog.capture({
         distinctId: order?.stripeSessionId || String(order?.id || "unknown"),
@@ -281,6 +321,30 @@ async function sendOrderToBigBuy(order, bigBuyItems, customerDetails, shippingDe
     } catch {}
 
     return { success: false, error: err.response?.data || err.message };
+  }
+}
+
+/**
+ * Send email notification
+ */
+async function sendEmail(to, subject, text) {
+  try {
+    const sgMail = require("@sendgrid/mail");
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+
+    const msg = {
+      to,
+      from: process.env.SENDGRID_FROM_EMAIL,
+      subject,
+      text,
+    };
+
+    await sgMail.send(msg);
+    console.log(`📧 Email sent to: ${to}`);
+    return true;
+  } catch (err) {
+    console.error("❌ Error sending email:", err.message);
+    return false;
   }
 }
 
@@ -300,7 +364,6 @@ router.post(
     } catch (err) {
       console.error("⚠️ Webhook signature verification failed:", err.message);
 
-      // ✅ PostHog
       try {
         posthog.capture({
           distinctId: "anonymous",
@@ -312,12 +375,12 @@ router.post(
       return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
+    // 🔥 MAIN WEBHOOK HANDLER
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
       console.log("✅ Checkout session completed:", session.id);
       console.log("Payment status:", session.payment_status);
 
-      // ✅ PostHog: stripe checkout completed (server-truth)
       try {
         posthog.capture({
           distinctId: session.id,
@@ -332,30 +395,39 @@ router.post(
       } catch {}
 
       try {
-        // Retrieve full session with line items AND price.product (for metadata)
+        // Retrieve full session with line items and payment intent
         const fullSession = await stripe.checkout.sessions.retrieve(session.id, {
           expand: ["line_items", "line_items.data.price.product", "payment_intent"],
         });
 
-        console.log("Payment Intent details:", {
-          id: fullSession.payment_intent?.id,
-          status: fullSession.payment_intent?.status,
-          capture_method: fullSession.payment_intent?.capture_method,
+        const paymentIntent = fullSession.payment_intent;
+        
+        console.log("💳 Payment Intent details:", {
+          id: paymentIntent?.id,
+          status: paymentIntent?.status,
+          capture_method: paymentIntent?.capture_method,
+          amount: paymentIntent?.amount,
         });
+
+        // ✅ Verify it's manual capture
+        if (paymentIntent?.capture_method !== "manual") {
+          console.error("⚠️ WARNING: Payment is not set to manual capture!");
+          console.error("This means payment was already charged automatically.");
+        }
 
         const customerDetails = session.customer_details || {};
         const shippingDetails = customerDetails.address || {};
 
         const lineItems = fullSession.line_items.data;
 
-        // Save items for your Order table + email
+        // Save items for Order table
         const items = lineItems.map((item) => ({
           name: item.description,
           quantity: item.quantity,
           price: item.amount_total / 100,
         }));
 
-        // 🔥 Build BigBuy items using product metadata added in stripeRoutes.js
+        // 🔥 Build BigBuy items using product metadata
         const bigBuyItems = [];
         for (const li of lineItems) {
           const productId = li.price?.product?.metadata?.productId;
@@ -385,7 +457,7 @@ router.post(
           }
 
           bigBuyItems.push({
-            bigbuySku: product.urllink, // BigBuy SKU stored in urllink
+            bigbuySku: product.urllink,
             quantity: li.quantity,
           });
         }
@@ -407,12 +479,11 @@ router.post(
               totalAmount: session.amount_total,
               currency: session.currency,
               items,
-              paymentStatus: "authorized", // Payment authorized but not captured
+              paymentStatus: "authorized", // Payment authorized but not captured yet
             },
           });
           console.log("💾 Order created in database:", order.id);
 
-          // ✅ PostHog
           try {
             posthog.capture({
               distinctId: session.id,
@@ -430,223 +501,148 @@ router.post(
           console.log("ℹ️ Order already exists in database:", order.id);
         }
 
-        // 🔥 STEP 1: Send order to BigBuy FIRST (charges BigBuy wallet)
-        let bigbuyResult;
-        try {
-          console.log("🚀 Attempting to send order to BigBuy...");
-          bigbuyResult = await sendOrderToBigBuy(order, bigBuyItems, customerDetails, shippingDetails);
-          console.log("BigBuy result:", bigbuyResult);
-        } catch (err) {
-          console.error("Error calling sendOrderToBigBuy:", err);
-          bigbuyResult = { success: false, error: err.message };
+        // 🔥 STEP 1: Check if payment is authorized and ready
+        if (!paymentIntent || paymentIntent.status !== "requires_capture") {
+          console.error("❌ Payment Intent is not in 'requires_capture' state!");
+          console.error("Current status:", paymentIntent?.status);
+          
+          await prisma.order.update({
+            where: { id: order.id },
+            data: { 
+              paymentStatus: `error_${paymentIntent?.status || 'unknown'}`,
+              dropshipperStatus: "payment_error"
+            },
+          });
 
           try {
             posthog.capture({
               distinctId: session.id,
-              event: "bigbuy_send_call_error",
+              event: "payment_not_authorized",
               properties: {
-                order_id: order?.id,
+                order_id: order.id,
                 stripe_session_id: session.id,
-                error: String(err?.message || err),
+                payment_status: paymentIntent?.status,
               },
             });
           } catch {}
+
+          return res.status(200).json({ received: true, error: "Payment not authorized" });
         }
 
-        // Get payment intent details
-        const paymentIntentId = fullSession.payment_intent?.id || session.payment_intent;
-        let paymentIntent = fullSession.payment_intent;
+        console.log("✅ Payment is authorized and ready for capture");
+
+        // 🔥 STEP 2: Send order to BigBuy FIRST (before capturing payment)
+        console.log("🚀 Attempting to send order to BigBuy...");
+        const bigbuyResult = await sendOrderToBigBuy(
+          order, 
+          bigBuyItems, 
+          customerDetails, 
+          shippingDetails
+        );
         
-        // If payment intent wasn't expanded, retrieve it
-        if (typeof paymentIntent === 'string' || !paymentIntent?.status) {
-          console.log("Retrieving payment intent separately...");
-          paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
-        }
+        console.log("BigBuy result:", bigbuyResult);
 
-        console.log("Payment Intent Status:", paymentIntent?.status);
-        console.log("Payment Intent Capture Method:", paymentIntent?.capture_method);
-
-        // 🔥 STEP 2: If BigBuy order failed, handle payment appropriately
+        // 🔥 STEP 3: Handle based on BigBuy result
         if (!bigbuyResult.success) {
-          console.error("❌ BigBuy order failed, handling payment...");
+          // ❌ BigBuy failed - CANCEL the payment authorization
+          console.error("❌ BigBuy order failed, canceling payment authorization...");
 
           try {
-            if (paymentIntentId && paymentIntent) {
-              console.log(`Payment Intent status: ${paymentIntent.status}`);
+            await stripe.paymentIntents.cancel(paymentIntent.id);
 
-              if (paymentIntent.status === "requires_capture") {
-                // Payment is authorized but not captured - cancel it
-                await stripe.paymentIntents.cancel(paymentIntentId);
+            await prisma.order.update({
+              where: { id: order.id },
+              data: { 
+                paymentStatus: "canceled",
+                dropshipperStatus: "failed"
+              },
+            });
 
-                await prisma.order.update({
-                  where: { id: order.id },
-                  data: { 
-                    paymentStatus: "canceled",
-                    dropshipperStatus: "failed"
-                  },
-                });
-
-                console.log("✅ Stripe payment authorization canceled");
-
-                try {
-                  posthog.capture({
-                    distinctId: session.id,
-                    event: "stripe_payment_canceled",
-                    properties: {
-                      order_id: order.id,
-                      stripe_session_id: session.id,
-                      reason: "bigbuy_order_failed",
-                      bigbuy_error: bigbuyResult.error,
-                    },
-                  });
-                } catch {}
-
-                // Send failure email
-                const sgMail = require("@sendgrid/mail");
-                sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-
-                const failMsg = {
-                  to: customerDetails.email,
-                  from: process.env.SENDGRID_FROM_EMAIL,
-                  subject: "Order Could Not Be Processed",
-                  text: `We're sorry, but we couldn't process your order due to availability issues.\n\nYour payment authorization has been canceled and no charge has been made to your card.\n\nOrder ID: ${order.id}\nAmount: €${session.amount_total / 100}\n\nIf you have any questions, please contact our support team.`,
-                };
-
-                await sgMail.send(failMsg);
-                console.log("📧 Cancellation notification sent");
-              } else if (paymentIntent.status === "succeeded") {
-                // Payment was already captured - issue a refund
-                console.log("⚠️ Payment already captured, issuing refund instead");
-
-                const refund = await stripe.refunds.create({
-                  payment_intent: paymentIntentId,
-                  reason: "requested_by_customer",
-                });
-
-                await prisma.order.update({
-                  where: { id: order.id },
-                  data: { 
-                    paymentStatus: "refunded",
-                    dropshipperStatus: "failed",
-                    stripeRefundId: refund.id,
-                  },
-                });
-
-                console.log("✅ Stripe payment refunded:", refund.id);
-
-                try {
-                  posthog.capture({
-                    distinctId: session.id,
-                    event: "stripe_refund_issued",
-                    properties: {
-                      order_id: order.id,
-                      stripe_session_id: session.id,
-                      refund_id: refund.id,
-                      reason: "bigbuy_order_failed_after_capture",
-                      bigbuy_error: bigbuyResult.error,
-                    },
-                  });
-                } catch {}
-
-                // Send refund email
-                const sgMail = require("@sendgrid/mail");
-                sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-
-                const refundMsg = {
-                  to: customerDetails.email,
-                  from: process.env.SENDGRID_FROM_EMAIL,
-                  subject: "Order Could Not Be Processed - Refund Issued",
-                  text: `We're sorry, but we couldn't process your order due to availability issues.\n\nYour payment of €${session.amount_total / 100} has been refunded and should appear in your account within 5-10 business days.\n\nOrder ID: ${order.id}\nRefund ID: ${refund.id}\n\nIf you have any questions, please contact our support team.`,
-                };
-
-                await sgMail.send(refundMsg);
-                console.log("📧 Refund notification sent");
-              } else {
-                console.log(`⚠️ Unexpected payment status: ${paymentIntent.status}`);
-                
-                await prisma.order.update({
-                  where: { id: order.id },
-                  data: { 
-                    paymentStatus: `failed_${paymentIntent.status}`,
-                    dropshipperStatus: "failed"
-                  },
-                });
-              }
-            }
-          } catch (handleErr) {
-            console.error("❌ Error handling payment after BigBuy failure:", handleErr.message);
+            console.log("✅ Stripe payment authorization canceled - customer NOT charged");
 
             try {
               posthog.capture({
                 distinctId: session.id,
-                event: "stripe_payment_handling_failed",
+                event: "stripe_payment_canceled",
                 properties: {
                   order_id: order.id,
                   stripe_session_id: session.id,
-                  error: String(handleErr?.message || handleErr),
+                  reason: "bigbuy_order_failed",
+                  bigbuy_error: bigbuyResult.error,
+                },
+              });
+            } catch {}
+
+            // Send failure email
+            await sendEmail(
+              customerDetails.email,
+              "Order Could Not Be Processed",
+              `We're sorry, but we couldn't process your order due to availability issues.\n\nYour payment authorization has been canceled and no charge has been made to your card.\n\nOrder ID: ${order.id}\nAmount: €${session.amount_total / 100}\n\nIf you have any questions, please contact our support team.`
+            );
+
+            try {
+              posthog.capture({
+                distinctId: session.id,
+                event: "order_cancellation_email_sent",
+                properties: { 
+                  stripe_session_id: session.id, 
+                  to: customerDetails.email 
+                },
+              });
+            } catch {}
+
+          } catch (cancelErr) {
+            console.error("❌ Error canceling payment:", cancelErr.message);
+
+            await prisma.order.update({
+              where: { id: order.id },
+              data: { 
+                paymentStatus: "cancel_failed",
+                dropshipperStatus: "failed"
+              },
+            });
+
+            try {
+              posthog.capture({
+                distinctId: session.id,
+                event: "stripe_cancel_failed",
+                properties: {
+                  order_id: order.id,
+                  stripe_session_id: session.id,
+                  error: String(cancelErr?.message || cancelErr),
                 },
               });
             } catch {}
           }
 
-          // Return early - don't send success email or try to capture payment
           return res.status(200).json({ received: true });
         }
 
-        // 🔥 STEP 3: BigBuy succeeded, ensure payment is captured
+        // ✅ STEP 4: BigBuy succeeded - CAPTURE the payment
+        console.log("✅ BigBuy order successful, capturing payment...");
+
         try {
-          if (paymentIntentId && paymentIntent) {
-            if (paymentIntent.status === "requires_capture") {
-              console.log("💰 Capturing Stripe payment...");
-              
-              await stripe.paymentIntents.capture(paymentIntentId);
+          await stripe.paymentIntents.capture(paymentIntent.id);
 
-              await prisma.order.update({
-                where: { id: order.id },
-                data: { paymentStatus: "paid" },
-              });
+          await prisma.order.update({
+            where: { id: order.id },
+            data: { paymentStatus: "paid" },
+          });
 
-              console.log("✅ Stripe payment captured successfully");
+          console.log("✅ Stripe payment captured successfully - customer charged");
 
-              try {
-                posthog.capture({
-                  distinctId: session.id,
-                  event: "stripe_payment_captured",
-                  properties: {
-                    order_id: order.id,
-                    stripe_session_id: session.id,
-                    amount: session.amount_total,
-                  },
-                });
-              } catch {}
-            } else if (paymentIntent.status === "succeeded") {
-              console.log("✅ Payment already captured automatically");
-              
-              await prisma.order.update({
-                where: { id: order.id },
-                data: { paymentStatus: "paid" },
-              });
+          try {
+            posthog.capture({
+              distinctId: session.id,
+              event: "stripe_payment_captured",
+              properties: {
+                order_id: order.id,
+                stripe_session_id: session.id,
+                amount: session.amount_total,
+              },
+            });
+          } catch {}
 
-              try {
-                posthog.capture({
-                  distinctId: session.id,
-                  event: "stripe_payment_already_captured",
-                  properties: {
-                    order_id: order.id,
-                    stripe_session_id: session.id,
-                    amount: session.amount_total,
-                  },
-                });
-              } catch {}
-            } else {
-              console.warn(`⚠️ Unexpected payment status after BigBuy success: ${paymentIntent.status}`);
-              
-              await prisma.order.update({
-                where: { id: order.id },
-                data: { paymentStatus: `uncertain_${paymentIntent.status}` },
-              });
-            }
-          }
         } catch (captureErr) {
           console.error("❌ Error capturing payment:", captureErr.message);
 
@@ -666,50 +662,32 @@ router.post(
               },
             });
           } catch {}
+
+          return res.status(200).json({ received: true });
         }
 
-        // 📧 Send confirmation email using SendGrid
-        const sgMail = require("@sendgrid/mail");
-        sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-
+        // 📧 Send confirmation email
         const emailItems = items
           .map((i) => `• ${i.name} x${i.quantity} (€${i.price})`)
           .join("\n");
 
-        const msg = {
-          to: customerDetails.email,
-          from: process.env.SENDGRID_FROM_EMAIL,
-          subject: "Order Confirmation",
-          text: `Thanks for your order!\n\nItems:\n${emailItems}\n\nTotal: €${
-            session.amount_total / 100
-          }\n\nWe will notify you when it ships.`,
-        };
+        await sendEmail(
+          customerDetails.email,
+          "Order Confirmation",
+          `Thanks for your order!\n\nItems:\n${emailItems}\n\nTotal: €${session.amount_total / 100}\n\nWe will notify you when it ships.`
+        );
 
         try {
-          await sgMail.send(msg);
-          console.log("📧 Confirmation email sent to:", customerDetails.email);
+          posthog.capture({
+            distinctId: session.id,
+            event: "order_confirmation_email_sent",
+            properties: { 
+              stripe_session_id: session.id, 
+              to: customerDetails.email 
+            },
+          });
+        } catch {}
 
-          try {
-            posthog.capture({
-              distinctId: session.id,
-              event: "order_email_sent",
-              properties: { stripe_session_id: session.id, to: customerDetails.email },
-            });
-          } catch {}
-        } catch (err) {
-          console.error("❌ Error sending email:", err.message);
-
-          try {
-            posthog.capture({
-              distinctId: session.id,
-              event: "order_email_failed",
-              properties: {
-                stripe_session_id: session.id,
-                error: String(err?.message || err),
-              },
-            });
-          } catch {}
-        }
       } catch (err) {
         console.error("❌ Error processing checkout.session.completed:", err);
 
