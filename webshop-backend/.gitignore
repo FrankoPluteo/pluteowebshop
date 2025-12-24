@@ -6,4 +6,3 @@ node_modules
 # Ignore local images
 public/images/
 
-/scripts

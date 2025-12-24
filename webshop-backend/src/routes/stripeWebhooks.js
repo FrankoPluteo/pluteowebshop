@@ -24,53 +24,56 @@ const BIGBUY_BASE_URL = BIGBUY_USE_SANDBOX
 /**
  * Fetch available carriers for a product from BigBuy
  */
-async function getAvailableCarriers(bigbuySku, country, postalCode) {
+async function getAvailableCarriersForOrder(bigBuyItems, country, postcode) {
   try {
     const headers = {
       Authorization: `Bearer ${BIGBUY_API_KEY}`,
       "Content-Type": "application/json",
     };
 
-    const response = await axios.get(
-      `${BIGBUY_BASE_URL}/rest/shipping/carriers.json`,
-      {
-        headers,
-        params: {
-          isoCountry: country,
-          postalCode: postalCode,
+    // BigBuy often expects postcode without extra spaces
+    const cleanPostcode = String(postcode || "").trim();
+
+    const payload = {
+      order: {
+        delivery: {
+          isoCountry: String(country || "").toUpperCase(),
+          postcode: cleanPostcode,
         },
-      }
+        products: bigBuyItems.map((p) => ({
+          reference: p.bigbuySku,
+          quantity: p.quantity,
+        })),
+      },
+    };
+
+    const res = await axios.post(
+      `${BIGBUY_BASE_URL}/rest/shipping/orders.json`,
+      payload,
+      { headers }
     );
 
-    console.log(`Available carriers for destination ${country}:`, JSON.stringify(response.data, null, 2));
-    
-    // Filter out carriers that exclude this product
-    const availableCarriers = response.data.filter(carrier => {
-      // Check if product is excluded
-      if (carrier.excludedProductReferences && carrier.excludedProductReferences.includes(bigbuySku)) {
-        console.log(`Carrier ${carrier.name} excludes product ${bigbuySku}`);
-        return false;
-      }
-      
-      // Check if carrier ships to this country
-      if (carrier.shippingCountries) {
-        const shipsToCountry = carrier.shippingCountries.some(
-          c => c.isoCode === country || c.iso === country
-        );
-        if (!shipsToCountry) {
-          console.log(`Carrier ${carrier.name} does not ship to ${country}`);
-          return false;
-        }
-      }
-      
-      return true;
-    });
+    const shippingOptions = res.data?.shippingOptions || [];
+    console.log(
+      "BigBuy shippingOptions:",
+      JSON.stringify(shippingOptions, null, 2)
+    );
 
-    console.log(`Filtered available carriers:`, availableCarriers.map(c => c.name));
-    
-    return availableCarriers;
+    // serviceName is what BigBuy says you can send in order.carriers[].name
+    const names = shippingOptions
+      .map((opt) => opt?.shippingService?.serviceName || opt?.shippingService?.name)
+      .filter(Boolean)
+      .map((n) => String(n).toLowerCase());
+
+    // Deduplicate
+    const uniqueNames = [...new Set(names)];
+
+    return uniqueNames.map((name) => ({ name }));
   } catch (err) {
-    console.error("Error fetching carriers:", err.response?.data || err.message);
+    console.error(
+      "Error fetching shipping options:",
+      err.response?.data || err.message
+    );
     return [];
   }
 }
@@ -80,32 +83,16 @@ async function getAvailableCarriers(bigbuySku, country, postalCode) {
  */
 function selectBestCarrier(carriers) {
   if (!carriers || carriers.length === 0) {
-    console.warn("No carriers available, falling back to 'standard shipment'");
-    return "standard shipment";
+    return null; // no fallback
   }
-
-  const priority = [
-    "gls",
-    "standard shipment", 
-    "postal service",
-    "ups",
-    "dhl",
-    "express"
-  ];
-  
+  const priority = ["gls", "standard shipment", "postal service", "ups", "dhl", "express"];
   for (const preferred of priority) {
-    const found = carriers.find(
-      (c) => c.name.toLowerCase() === preferred
-    );
-    if (found) {
-      console.log(`Selected carrier: ${found.name}`);
-      return found.name.toLowerCase();
-    }
+    const found = carriers.find((c) => c.name === preferred);
+    if (found) return found.name;
   }
-
-  console.log(`No priority carrier found, using first available: ${carriers[0].name}`);
-  return carriers[0].name.toLowerCase();
+  return carriers[0].name;
 }
+
 
 /**
  * Send order to BigBuy (this does NOT charge Stripe - that happens after)
@@ -176,13 +163,17 @@ async function sendOrderToBigBuy(order, bigBuyItems, customerDetails, shippingDe
     const lastName = rest.join(" ") || firstName;
 
     // 🔥 Get available carriers dynamically
-    const carriers = await getAvailableCarriers(
-      bigBuyItems[0].bigbuySku,
+    const carriers = await getAvailableCarriersForOrder(
+      bigBuyItems,
       shippingDetails.country,
       shippingDetails.postal_code
     );
 
     const selectedCarrier = selectBestCarrier(carriers);
+    if (!selectedCarrier) {
+      return { success: false, error: "No shipping options available for this order/destination." };
+    }
+
     console.log(`Selected carrier: ${selectedCarrier}`);
 
     // Format phone number properly (BigBuy might require international format)

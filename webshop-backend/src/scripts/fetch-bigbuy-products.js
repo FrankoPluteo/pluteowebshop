@@ -1,5 +1,5 @@
-// fetch-bigbuy-available-products.js
-// Fetch products with stock from BigBuy sandbox
+// check-bigbuy-catalog.js
+// Check if BigBuy sandbox has ANY products at all
 const axios = require("axios");
 require("dotenv").config();
 
@@ -17,187 +17,146 @@ const headers = {
   "Content-Type": "application/json",
 };
 
-console.log(`\n🔍 Fetching available products from BigBuy (${BIGBUY_USE_SANDBOX ? 'SANDBOX' : 'PRODUCTION'})`);
+console.log(`\n🔍 Checking BigBuy Catalog (${BIGBUY_USE_SANDBOX ? 'SANDBOX' : 'PRODUCTION'})`);
 console.log(`Base URL: ${BIGBUY_BASE_URL}\n`);
 
-async function getProductsWithStock() {
+async function checkCatalog() {
   try {
-    console.log("📦 Step 1: Fetching first-level taxonomies...");
-    
-    // Get first level taxonomies first
+    // Step 1: Get all taxonomies
+    console.log("📦 Step 1: Fetching ALL taxonomies...");
     const taxonomiesResponse = await axios.get(
+      `${BIGBUY_BASE_URL}/rest/catalog/taxonomies.json`,
+      { headers }
+    );
+    
+    console.log(`✅ Total taxonomies: ${taxonomiesResponse.data.length}`);
+    
+    // Get first level taxonomies
+    const firstLevelResponse = await axios.get(
       `${BIGBUY_BASE_URL}/rest/catalog/taxonomies.json`,
       {
         headers,
-        params: {
-          firstLevel: true,
-        },
+        params: { firstLevel: true },
       }
     );
     
-    if (!taxonomiesResponse.data || taxonomiesResponse.data.length === 0) {
-      console.error("❌ No taxonomies found");
-      return null;
-    }
+    console.log(`✅ First-level taxonomies: ${firstLevelResponse.data.length}\n`);
     
-    const firstTaxonomy = taxonomiesResponse.data[0];
-    console.log(`✅ Found taxonomy: ${firstTaxonomy.name} (ID: ${firstTaxonomy.id})\n`);
+    // Step 2: Try to get products from each first-level taxonomy
+    console.log("📦 Step 2: Checking products in each taxonomy...\n");
     
-    console.log("📦 Step 2: Fetching products with stock...");
+    let totalProducts = 0;
+    let taxonomiesWithProducts = [];
     
-    // Get products stock by handling days (as per documentation)
-    const stockResponse = await axios.get(
-      `${BIGBUY_BASE_URL}/rest/catalog/productsstockbyhandlingdays.json`,
-      {
-        headers,
-        params: {
-          parentTaxonomy: firstTaxonomy.id,
-        },
-      }
-    );
-
-    console.log(`✅ Found ${stockResponse.data.length} products with stock info\n`);
-
-    // Filter products that have stock available (in any handling time)
-    const inStockProducts = stockResponse.data.filter(p => {
-      if (!p.stocks || p.stocks.length === 0) return false;
-      const totalStock = p.stocks.reduce((sum, s) => sum + s.quantity, 0);
-      return totalStock > 0;
-    });
-    
-    console.log(`✅ ${inStockProducts.length} products IN STOCK:\n`);
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-
-    // Get detailed info for first 10 in-stock products
-    for (let i = 0; i < Math.min(10, inStockProducts.length); i++) {
-      const stockItem = inStockProducts[i];
-      const totalStock = stockItem.stocks.reduce((sum, s) => sum + s.quantity, 0);
-      
+    for (const taxonomy of firstLevelResponse.data.slice(0, 5)) { // Check first 5
       try {
-        // Get full product details
-        const productResponse = await axios.get(
-          `${BIGBUY_BASE_URL}/rest/catalog/product/${stockItem.id}.json`,
-          { headers }
-        );
-
-        const product = productResponse.data;
-        
-        console.log(`\n${i + 1}. Product ID: ${stockItem.id}`);
-        console.log(`   SKU: ${stockItem.sku}`);
-        console.log(`   Total Stock: ${totalStock} units`);
-        console.log(`   Wholesale Price: €${product.wholesalePrice || 'N/A'}`);
-        console.log(`   Retail Price: €${product.retailPrice || 'N/A'}`);
-        
-        // Show stock breakdown by handling days
-        stockItem.stocks.forEach(s => {
-          if (s.quantity > 0) {
-            console.log(`   - ${s.quantity} units (${s.minHandlingDays}-${s.maxHandlingDays} days)`);
+        const productsResponse = await axios.get(
+          `${BIGBUY_BASE_URL}/rest/catalog/products.json`,
+          {
+            headers,
+            params: {
+              parentTaxonomy: taxonomy.id,
+              pageSize: 10,
+            },
           }
-        });
+        );
         
-        if (i === 0) {
-          console.log(`\n   ⭐ RECOMMENDED: Use this SKU for testing!`);
-          console.log(`   📝 UPDATE COMMAND: UPDATE products SET urllink = '${stockItem.sku}' WHERE id = 7;`);
+        const count = productsResponse.data.length;
+        totalProducts += count;
+        
+        console.log(`   ${taxonomy.name} (ID: ${taxonomy.id}): ${count} products`);
+        
+        if (count > 0) {
+          taxonomiesWithProducts.push({
+            taxonomy: taxonomy,
+            products: productsResponse.data,
+          });
         }
-        
       } catch (err) {
-        console.log(`\n${i + 1}. Product ID: ${stockItem.id}`);
-        console.log(`   SKU: ${stockItem.sku}`);
-        console.log(`   Total Stock: ${totalStock} units`);
-        console.log(`   (Details not available: ${err.response?.data?.message || err.message})`);
+        console.log(`   ${taxonomy.name} (ID: ${taxonomy.id}): Error - ${err.message}`);
       }
     }
-
-    console.log("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     
-    if (inStockProducts.length > 0) {
-      const firstProduct = inStockProducts[0];
-      console.log("\n✅ TEST CONFIGURATION:");
-      console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-      console.log(`1. Update your product:`);
-      console.log(`   UPDATE products SET urllink = '${firstProduct.sku}' WHERE id = 7;`);
-      console.log(`\n2. Remove sandbox bypass from .env:`);
-      console.log(`   BIGBUY_SANDBOX_BYPASS=false`);
-      console.log(`\n3. Test order with this product!`);
+    console.log(`\n✅ Total products found: ${totalProducts}\n`);
+    
+    // Step 3: If we found products, check their stock
+    if (taxonomiesWithProducts.length > 0) {
+      console.log("📦 Step 3: Checking stock for products...\n");
       
-      return firstProduct.sku;
-    } else {
-      console.log("\n❌ No products with stock found in sandbox");
-      console.log("💡 You may need to use the bypass or contact BigBuy support");
-      return null;
+      const firstTaxWithProducts = taxonomiesWithProducts[0];
+      const firstProduct = firstTaxWithProducts.products[0];
+      
+      console.log(`Checking product: ${firstProduct.sku}`);
+      console.log(`   Taxonomy: ${firstTaxWithProducts.taxonomy.name}`);
+      console.log(`   Product ID: ${firstProduct.id}`);
+      console.log(`   Wholesale Price: €${firstProduct.wholesalePrice}`);
+      console.log(`   Retail Price: €${firstProduct.retailPrice}\n`);
+      
+      // Try to check stock
+      try {
+        const stockResponse = await axios.get(
+          `${BIGBUY_BASE_URL}/rest/catalog/productsstockbyhandlingdays.json`,
+          {
+            headers,
+            params: {
+              parentTaxonomy: firstTaxWithProducts.taxonomy.id,
+            },
+          }
+        );
+        
+        console.log(`Stock data available: ${stockResponse.data.length} products`);
+        
+        const productStock = stockResponse.data.find(s => s.id === firstProduct.id);
+        if (productStock) {
+          console.log(`\n✅ Stock for ${productStock.sku}:`);
+          productStock.stocks.forEach(s => {
+            console.log(`   - ${s.quantity} units (${s.minHandlingDays}-${s.maxHandlingDays} days)`);
+          });
+          
+          const totalStock = productStock.stocks.reduce((sum, s) => sum + s.quantity, 0);
+          if (totalStock > 0) {
+            console.log(`\n🎉 FOUND PRODUCT WITH STOCK!`);
+            console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+            console.log(`SKU: ${productStock.sku}`);
+            console.log(`Total Stock: ${totalStock} units`);
+            console.log(`\n📝 UPDATE COMMAND:`);
+            console.log(`UPDATE products SET urllink = '${productStock.sku}' WHERE id = 7;`);
+            
+            return productStock.sku;
+          } else {
+            console.log(`\n⚠️ Product exists but has NO STOCK`);
+          }
+        } else {
+          console.log(`\n⚠️ No stock data found for this product`);
+        }
+      } catch (err) {
+        console.log(`\n❌ Error checking stock: ${err.response?.data?.message || err.message}`);
+      }
     }
-
+    
+    // Step 4: Final verdict
+    console.log(`\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    console.log(`FINAL VERDICT:`);
+    console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    
+    if (totalProducts === 0) {
+      console.log(`❌ BigBuy sandbox has NO products in the catalog`);
+    } else if (taxonomiesWithProducts.length === 0) {
+      console.log(`⚠️ BigBuy sandbox has products but all have ZERO stock`);
+    } else {
+      console.log(`⚠️ BigBuy sandbox has limited functionality`);
+    }
+    
+    console.log(`\n💡 RECOMMENDATION:`);
+    console.log(`   The sandbox is non-functional for order testing.`);
+    console.log(`   Your options:`);
+    console.log(`   1. Keep using BIGBUY_SANDBOX_BYPASS=true for development`);
+    console.log(`   2. Switch to production BigBuy (with Stripe test mode)`);
+    console.log(`\n   Your Stripe payment flow is working perfectly, so option 2 is safe!`);
+    
   } catch (err) {
-    console.error("❌ Error fetching products:", err.response?.data || err.message);
-    return null;
+    console.error("❌ Error:", err.response?.data || err.message);
   }
 }
 
-async function testOrderWithProduct(sku) {
-  console.log(`\n\n🧪 Testing order with product SKU: ${sku}`);
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  
-  const payload = {
-    order: {
-      internalReference: `TEST_${Date.now()}`,
-      language: "en",
-      paymentMethod: "moneybox",
-      shippingAddress: {
-        firstName: "Franko",
-        lastName: "Pavlic",
-        country: "HR",
-        postcode: "10000",
-        town: "Zagreb",
-        address: "Trg bana Josipa Jelacica 1",
-        phone: "+385912345678",
-        email: "test@example.com",
-        comment: "",
-      },
-      products: [
-        {
-          reference: sku,
-          quantity: 1,
-        },
-      ],
-    },
-  };
-
-  try {
-    console.log("📤 Sending CHECK request to BigBuy...");
-    const response = await axios.post(
-      `${BIGBUY_BASE_URL}/rest/order/check/multishipping.json`,
-      payload,
-      { headers }
-    );
-
-    console.log("\n✅ ORDER CHECK SUCCESSFUL!");
-    console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    console.log("Response from BigBuy:");
-    console.log(JSON.stringify(response.data, null, 2));
-    
-    console.log("\n🎉 This product works in sandbox!");
-    console.log("✅ You can now disable BIGBUY_SANDBOX_BYPASS and test real orders");
-    
-    return true;
-  } catch (err) {
-    console.error("\n❌ ORDER CHECK FAILED:");
-    console.error("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    console.error(err.response?.data || err.message);
-    
-    console.log("\n💡 This product might not work. Try another SKU from the list above.");
-    
-    return false;
-  }
-}
-
-async function run() {
-  const sku = await getProductsWithStock();
-  
-  if (sku) {
-    // Wait a bit before testing
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    await testOrderWithProduct(sku);
-  }
-}
-
-run();
+checkCatalog();
