@@ -316,7 +316,7 @@ async function sendOrderToBigBuy(order, bigBuyItems, customerDetails, shippingDe
 }
 
 /**
- * Send email notification
+ * Send email notification (errors are ignored as requested)
  */
 async function sendEmail(to, subject, text) {
   try {
@@ -334,7 +334,7 @@ async function sendEmail(to, subject, text) {
     console.log(`📧 Email sent to: ${to}`);
     return true;
   } catch (err) {
-    console.error("❌ Error sending email:", err.message);
+    console.error("❌ Error sending email (ignored):", err.message);
     return false;
   }
 }
@@ -564,23 +564,27 @@ router.post(
               });
             } catch {}
 
-            // Send failure email
-            await sendEmail(
-              customerDetails.email,
-              "Order Could Not Be Processed",
-              `We're sorry, but we couldn't process your order due to availability issues.\n\nYour payment authorization has been canceled and no charge has been made to your card.\n\nOrder ID: ${order.id}\nAmount: €${session.amount_total / 100}\n\nIf you have any questions, please contact our support team.`
-            );
-
+            // 📧 Send failure email (IGNORE errors as requested)
             try {
-              posthog.capture({
-                distinctId: session.id,
-                event: "order_cancellation_email_sent",
-                properties: { 
-                  stripe_session_id: session.id, 
-                  to: customerDetails.email 
-                },
-              });
-            } catch {}
+              await sendEmail(
+                customerDetails.email,
+                "Order Could Not Be Processed",
+                `We're sorry, but we couldn't process your order due to availability issues.\n\nYour payment authorization has been canceled and no charge has been made to your card.\n\nOrder ID: ${order.id}\nAmount: €${session.amount_total / 100}\n\nIf you have any questions, please contact our support team.`
+              );
+
+              try {
+                posthog.capture({
+                  distinctId: session.id,
+                  event: "order_cancellation_email_sent",
+                  properties: { 
+                    stripe_session_id: session.id, 
+                    to: customerDetails.email 
+                  },
+                });
+              } catch {}
+            } catch (emailError) {
+              console.warn("📧 Cancellation email failed (ignoring):", emailError.message);
+            }
 
           } catch (cancelErr) {
             console.error("❌ Error canceling payment:", cancelErr.message);
@@ -657,27 +661,31 @@ router.post(
           return res.status(200).json({ received: true });
         }
 
-        // 📧 Send confirmation email
-        const emailItems = items
-          .map((i) => `• ${i.name} x${i.quantity} (€${i.price})`)
-          .join("\n");
-
-        await sendEmail(
-          customerDetails.email,
-          "Order Confirmation",
-          `Thanks for your order!\n\nItems:\n${emailItems}\n\nTotal: €${session.amount_total / 100}\n\nWe will notify you when it ships.`
-        );
-
+        // 📧 Send confirmation email (IGNORE errors as requested)
         try {
-          posthog.capture({
-            distinctId: session.id,
-            event: "order_confirmation_email_sent",
-            properties: { 
-              stripe_session_id: session.id, 
-              to: customerDetails.email 
-            },
-          });
-        } catch {}
+          const emailItems = items
+            .map((i) => `• ${i.name} x${i.quantity} (€${i.price})`)
+            .join("\n");
+
+          await sendEmail(
+            customerDetails.email,
+            "Order Confirmation",
+            `Thanks for your order!\n\nItems:\n${emailItems}\n\nTotal: €${session.amount_total / 100}\n\nWe will notify you when it ships.`
+          );
+
+          try {
+            posthog.capture({
+              distinctId: session.id,
+              event: "order_confirmation_email_sent",
+              properties: { 
+                stripe_session_id: session.id, 
+                to: customerDetails.email 
+              },
+            });
+          } catch {}
+        } catch (emailError) {
+          console.warn("📧 Confirmation email failed (ignoring):", emailError.message);
+        }
 
       } catch (err) {
         console.error("❌ Error processing checkout.session.completed:", err);
