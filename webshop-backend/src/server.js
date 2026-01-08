@@ -5,6 +5,9 @@ const express = require("express");
 // ✅ PostHog client (server-side)
 const posthog = require("./posthogClient");
 
+// ✅ Stock service
+const { updateAllProductStock } = require("./services/bigbuyStockService");
+
 const startServer = async () => {
   try {
     const stripeWebhooks = require("./routes/stripeWebhooks");
@@ -21,10 +24,39 @@ const startServer = async () => {
     const orderRoutes = require("./routes/orderRoutes");
     app.use("/api/orders", orderRoutes);
 
+    // ✅ Stock routes
+    const stockRoutes = require("./routes/stockRoutes");
+    app.use("/api/stock", stockRoutes);
+
     const PORT = process.env.PORT || 3001;
     const server = app.listen(PORT, () => {
       console.log(`✅ Server running at http://localhost:${PORT}`);
     });
+
+    // ✅ Initial stock sync on startup
+    console.log("🔄 Performing initial stock sync...");
+    updateAllProductStock()
+      .then(result => {
+        console.log(`✅ Initial stock sync complete: ${result.updated} products updated`);
+      })
+      .catch(err => {
+        console.error("❌ Initial stock sync failed:", err.message);
+      });
+
+    // ✅ Schedule stock updates every 15 minutes (as recommended by BigBuy)
+    const STOCK_UPDATE_INTERVAL = 15 * 60 * 1000; // 15 minutes
+    
+    setInterval(async () => {
+      console.log("🔄 Scheduled stock update started...");
+      try {
+        const result = await updateAllProductStock();
+        console.log(`✅ Scheduled stock update complete: ${result.updated} products updated`);
+      } catch (err) {
+        console.error("❌ Scheduled stock update failed:", err.message);
+      }
+    }, STOCK_UPDATE_INTERVAL);
+
+    console.log(`⏰ Stock updates scheduled every ${STOCK_UPDATE_INTERVAL / 60000} minutes`);
 
     // ✅ Graceful shutdown: flush PostHog so you don't lose last events
     const shutdown = async (signal) => {

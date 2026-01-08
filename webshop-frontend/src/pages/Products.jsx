@@ -141,7 +141,8 @@ export default function Products() {
         .map(p => ({ 
           ...p, 
           price: parseFloat(p.price) || 0,
-          salepercentage: p.salepercentage ? parseInt(p.salepercentage) : null
+          salepercentage: p.salepercentage ? parseInt(p.salepercentage) : null,
+          stockQuantity: p.stockQuantity || 0
         }))
         .filter(p => p.price >= 0);
 
@@ -175,6 +176,12 @@ export default function Products() {
   const handleAddToCart = (e, product) => {
     e.preventDefault();
     e.stopPropagation();
+    
+    // Check if product is in stock
+    if (!product.stockQuantity || product.stockQuantity <= 0) {
+      return; // Don't add to cart if out of stock
+    }
+    
     addToCart(product);
     setAnimatingProduct(product.id);
     setCartAnimating(true);
@@ -190,8 +197,8 @@ export default function Products() {
       price: product.price,
       salepercentage: product.salepercentage ?? null,
       source: "products_grid",
+      stock_quantity: product.stockQuantity,
     });
-
   };
 
   const handleTempBrandChange = (e) => {
@@ -307,14 +314,13 @@ export default function Products() {
           >
             <option value="">All Genders</option>
             {allAvailableGenders
-              .filter(g => g.toLowerCase() !== 'unisex') // hide unisex from options
+              .filter(g => g.toLowerCase() !== 'unisex')
               .map((g, idx) => (
                 <option key={idx} value={g.toLowerCase()}>
                   {g}
                 </option>
               ))}
           </select>
-
 
           <div className="filter-buttons">
             <button className="apply-btn" onClick={applyFilters}>Apply Filters</button>
@@ -327,22 +333,34 @@ export default function Products() {
       {loading ? <p>Loading products...</p> : (
         <>
           <div className="product-grid">
-            {products.length > 0 ? products.map(product => (
-              <Link to={`/product/${product.id}`} className="product-card-link" key={product.id} onClick={() => {
-              saveStateBeforeNavigate();
-              posthog.capture("product_clicked", {
-                product_id: product.id,
-                product_name: product.name,
-                brand: product.brand,
-                price: product.price,
-                salepercentage: product.salepercentage ?? null,
-                source: "products_grid",
-              });
-            }}>
-                <div className="product-card">
+            {products.length > 0 ? products.map(product => {
+              const isInStock = product.stockQuantity && product.stockQuantity > 0;
+              
+              return (
+              <Link 
+                to={`/product/${product.id}`} 
+                className="product-card-link" 
+                key={product.id} 
+                onClick={() => {
+                  saveStateBeforeNavigate();
+                  posthog.capture("product_clicked", {
+                    product_id: product.id,
+                    product_name: product.name,
+                    brand: product.brand,
+                    price: product.price,
+                    salepercentage: product.salepercentage ?? null,
+                    source: "products_grid",
+                    in_stock: isInStock,
+                  });
+                }}
+              >
+                <div className={`product-card ${!isInStock ? 'out-of-stock' : ''}`}>
                   <div className="product-top">
                     {product.salepercentage && (
                       <span className="sale-badge">-{product.salepercentage}%</span>
+                    )}
+                    {!isInStock && (
+                      <span className="stock-badge out">Out of Stock</span>
                     )}
                     <img
                       className="productImage"
@@ -366,16 +384,17 @@ export default function Products() {
                         <p className="product-price">{product.price.toFixed(2)}€</p>
                       )}
                       <button
-                        className={`add-to-cart-btn ${animatingProduct === product.id ? 'added' : ''}`}
+                        className={`add-to-cart-btn ${animatingProduct === product.id ? 'added' : ''} ${!isInStock ? 'disabled' : ''}`}
                         onClick={(e) => handleAddToCart(e, product)}
+                        disabled={!isInStock}
                       >
-                        Add to Cart
+                        {!isInStock ? 'Out of Stock' : 'Add to Cart'}
                       </button>
                     </div>
                   </div>
                 </div>
               </Link>
-            )) : <p>No products match your current filters or are available.</p>}
+            )}) : <p>No products match your current filters or are available.</p>}
           </div>
 
           {totalPages > 1 && (

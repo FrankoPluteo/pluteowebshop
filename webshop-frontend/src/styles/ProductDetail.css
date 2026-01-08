@@ -16,11 +16,11 @@
     max-width: 1000px; 
     margin: 0 auto;
     font-family: Montserrat, sans-serif;
-    min-height: 80vh; /* Ensure it takes up some space */
+    min-height: 80vh;
 }
 
 .back-to-products-btn {
-    align-self: flex-start; /* Align to the left */
+    align-self: flex-start;
     margin-bottom: 30px;
     padding: 10px 20px;
     background-color: var(--color-dark);    
@@ -40,7 +40,7 @@
 
 .product-detail-card {
     display: flex;
-    flex-direction: column; /* Default to column for mobile */
+    flex-direction: column;
     background-color: var(--color-white);
     border-radius: 12px;
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
@@ -54,7 +54,7 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    background-color: #f0f4fb; /* neutral gray-blue background */
+    background-color: #f0f4fb;
     padding: 20px;
     position: relative;
 }
@@ -70,6 +70,22 @@
     font-weight: bold;
     font-size: 18px;
     z-index: 10;
+}
+
+.stock-badge-detail {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    padding: 8px 15px;
+    border-radius: 8px;
+    font-weight: bold;
+    font-size: 16px;
+    z-index: 10;
+}
+
+.stock-badge-detail.out {
+    background-color: #95a5a6;
+    color: white;
 }
 
 .product-detail-image {
@@ -97,6 +113,33 @@
     font-size: 1.1em;
     color: #666;
     font-weight: 500;
+}
+
+/* Stock Status Styles */
+.stock-status {
+    margin: 10px 0;
+    padding: 12px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 1em;
+}
+
+.stock-status .in-stock {
+    color: #27ae60;
+    background-color: #e8f8f5;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border-left: 4px solid #27ae60;
+    margin: 0;
+}
+
+.stock-status .out-of-stock-text {
+    color: #e74c3c;
+    background-color: #fadbd8;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border-left: 4px solid #e74c3c;
+    margin: 0;
 }
 
 .price-detail-container {
@@ -175,10 +218,10 @@
     font-weight: 700;
     cursor: pointer;
     transition: all 0.3s ease;
-    align-self: flex-start; /* Align button to start of flex container */
+    align-self: flex-start;
 }
 
-.add-to-cart-detail-btn:hover {
+.add-to-cart-detail-btn:hover:not(.disabled) {
     background-color: var(--color-light);
 }
 
@@ -189,10 +232,22 @@
   animation: shake 0.5s;
 }
 
+.add-to-cart-detail-btn.disabled {
+    background-color: #95a5a6;
+    border-color: #95a5a6;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.add-to-cart-detail-btn.disabled:hover {
+    background-color: #95a5a6;
+    transform: none;
+}
+
 /* Responsive adjustments */
 @media (min-width: 768px) {
     .product-detail-card {
-        flex-direction: row; /* Switch to row layout on larger screens */
+        flex-direction: row;
     }
 
     .product-detail-image-wrapper {
@@ -222,6 +277,12 @@
         padding: 6px 12px;
         top: 15px;
         right: 15px;
+    }
+    .stock-badge-detail {
+        font-size: 14px;
+        padding: 6px 12px;
+        top: 15px;
+        left: 15px;
     }
     .add-to-cart-detail-btn {
         font-size: 1em;

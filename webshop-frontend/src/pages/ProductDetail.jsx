@@ -5,7 +5,6 @@ import '../styles/ProductDetail.css';
 
 import posthog from "posthog-js";
 
-
 export default function ProductDetail() {
   const { productId } = useParams();
   const navigate = useNavigate();
@@ -33,7 +32,8 @@ export default function ProductDetail() {
         setProduct({ 
           ...data, 
           price: parseFloat(data.price) || 0,
-          salepercentage: data.salepercentage ? parseInt(data.salepercentage) : null
+          salepercentage: data.salepercentage ? parseInt(data.salepercentage) : null,
+          stockQuantity: data.stockQuantity || 0
         });
 
         posthog.capture("product_viewed", {
@@ -42,6 +42,8 @@ export default function ProductDetail() {
           brand: data.brand,
           price: parseFloat(data.price) || 0,
           salepercentage: data.salepercentage ? parseInt(data.salepercentage) : null,
+          stock_quantity: data.stockQuantity || 0,
+          in_stock: data.stockQuantity > 0,
         });
 
       } catch (err) {
@@ -61,6 +63,12 @@ export default function ProductDetail() {
 
   const handleAddToCart = () => {
     if (!product || !product.id) return;
+    
+    // Check if product is in stock
+    if (!product.stockQuantity || product.stockQuantity <= 0) {
+      return;
+    }
+    
     addToCart(product);
 
     posthog.capture("add_to_cart", {
@@ -70,6 +78,7 @@ export default function ProductDetail() {
       price: product.price,
       salepercentage: product.salepercentage ?? null,
       source: "product_detail",
+      stock_quantity: product.stockQuantity,
     });
 
     setAdded(true);
@@ -78,7 +87,6 @@ export default function ProductDetail() {
   };
 
   const handleBackToProducts = () => {
-    // Navigate to products without any state - this will trigger restoration from sessionStorage
     navigate('/products');
   };
 
@@ -89,6 +97,8 @@ export default function ProductDetail() {
   if (loading) return <div className="product-detail-container"><p>Loading product details...</p></div>;
   if (error) return <div className="product-detail-container"><p className="error-message">{error}</p><button onClick={handleBackToProducts} className="back-to-products-btn">Back to Products</button></div>;
   if (!product) return <div className="product-detail-container"><p>Product not found.</p><button onClick={handleBackToProducts} className="back-to-products-btn">Back to Products</button></div>;
+
+  const isInStock = product.stockQuantity && product.stockQuantity > 0;
 
   return (
     <div className="product-detail-container">
@@ -110,6 +120,9 @@ export default function ProductDetail() {
           {product.salepercentage && (
             <span className="sale-badge-detail">-{product.salepercentage}%</span>
           )}
+          {!isInStock && (
+            <span className="stock-badge-detail out">Out of Stock</span>
+          )}
           <img
             className="product-detail-image"
             src={product.image || '/placeholder.png'}
@@ -121,6 +134,15 @@ export default function ProductDetail() {
           <h2 className="product-detail-name">{product.name}</h2>
           <p className="product-detail-brand">{product.brand}</p>
           <p className='product-detail-brand'>{product.size} ml</p>
+          
+          {/* Stock Status */}
+          <div className="stock-status">
+            {isInStock ? (
+              <p className="in-stock">✓ In Stock ({product.stockQuantity} available)</p>
+            ) : (
+              <p className="out-of-stock-text">✗ Currently Out of Stock</p>
+            )}
+          </div>
           
           {product.salepercentage ? (
             <div className="price-detail-container">
@@ -135,10 +157,11 @@ export default function ProductDetail() {
           <p className="product-detail-gender">Gender: {product.gender || "Unspecified"}</p>
 
           <button
-            className={`add-to-cart-detail-btn ${added ? 'added' : ''}`}
+            className={`add-to-cart-detail-btn ${added ? 'added' : ''} ${!isInStock ? 'disabled' : ''}`}
             onClick={handleAddToCart}
+            disabled={!isInStock}
           >
-            {added ? 'Added!' : 'Add to Cart'}
+            {!isInStock ? 'Out of Stock' : added ? 'Added!' : 'Add to Cart'}
           </button>
         </div>
       </div>

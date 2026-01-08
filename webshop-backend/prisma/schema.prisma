@@ -19,8 +19,8 @@ model Order {
   items             Json      @db.Json
   paymentStatus     String?   @default("pending")
   dropshipperStatus String?   @default("not_sent")
-  bigbuyOrderId     String?   @db.VarChar(255)  // Store BigBuy order ID
-  stripeRefundId    String?   @db.VarChar(255)  // Store Stripe refund ID if needed
+  bigbuyOrderId     String?   @db.VarChar(255)
+  stripeRefundId    String?   @db.VarChar(255)
   createdAt         DateTime? @default(now()) @db.Timestamp(6)
   updatedAt         DateTime? @default(now()) @db.Timestamp(6)
 }
@@ -35,6 +35,8 @@ model products {
   price          Decimal? @db.Decimal(10, 2)
   size           String?  @db.VarChar(50)
   attributes     Json?
-  urllink        String?  @db.VarChar(255)  // This stores BigBuy SKU
+  urllink        String?  @db.VarChar(255)  // BigBuy SKU
   salepercentage Int?
+  stockQuantity  Int?     @default(0)       // Total available stock
+  lastStockCheck DateTime? @db.Timestamp(6) // When stock was last updated
 }

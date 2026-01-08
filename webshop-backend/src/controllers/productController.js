@@ -2,7 +2,7 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
-// --- Existing exports.getAllProducts (keep this as is) ---
+// --- Existing exports.getAllProducts (updated to include stock) ---
 exports.getAllProducts = async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
@@ -41,11 +41,25 @@ exports.getAllProducts = async (req, res) => {
             }
         }
 
-
         const products = await prisma.products.findMany({
             skip: skip,
             take: limit,
             where: whereClause,
+            select: {
+                id: true,
+                name: true,
+                brand: true,
+                description: true,
+                gender: true,
+                image: true,
+                price: true,
+                size: true,
+                attributes: true,
+                urllink: true,
+                salepercentage: true,
+                stockQuantity: true,      // ✅ Include stock
+                lastStockCheck: true,     // ✅ Include last check time
+            }
         });
 
         const totalProductsCount = await prisma.products.count({
@@ -68,10 +82,10 @@ exports.getAllProducts = async (req, res) => {
     }
 };
 
-// --- NEW: Function to get a single product by ID ---
+// --- Updated getSingleProduct to include stock ---
 exports.getSingleProduct = async (req, res) => {
     try {
-        const productId = parseInt(req.params.id); // Parse ID from URL parameter
+        const productId = parseInt(req.params.id);
 
         if (isNaN(productId)) {
             return res.status(400).json({ error: "Invalid product ID provided." });
@@ -81,6 +95,21 @@ exports.getSingleProduct = async (req, res) => {
             where: {
                 id: productId,
             },
+            select: {
+                id: true,
+                name: true,
+                brand: true,
+                description: true,
+                gender: true,
+                image: true,
+                price: true,
+                size: true,
+                attributes: true,
+                urllink: true,
+                salepercentage: true,
+                stockQuantity: true,      // ✅ Include stock
+                lastStockCheck: true,     // ✅ Include last check time
+            }
         });
 
         if (!product) {
@@ -94,7 +123,6 @@ exports.getSingleProduct = async (req, res) => {
         res.status(500).json({ error: "Failed to fetch product details", details: error.message });
     }
 };
-
 
 // --- Existing exports.getProductsMetadata (keep this as is) ---
 exports.getProductsMetadata = async (req, res) => {
